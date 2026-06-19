@@ -10,5 +10,5 @@
 //
 // Leave the placeholders as-is and the app simply runs local-only (no sync).
 
-export const SUPABASE_URL = "https://YOUR-PROJECT-ref.supabase.co";
-export const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+export const SUPABASE_URL = "https://esxzcjrvouvxfwhpckat.supabase.co";
+export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzeHpjanJ2b3V2eGZ3aHBja2F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MjgwOTIsImV4cCI6MjA5NzQwNDA5Mn0.MX_SE7M_gnopliHjsywecbQyUx9_yF59VE7cMhaZElI";
