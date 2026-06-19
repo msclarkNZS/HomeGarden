@@ -1,5 +1,9 @@
 name: Deploy to GitHub Pages
 
+# Builds the site and publishes it whenever you push to main.
+# One-time setup in your repo: Settings → Pages → Build and deployment →
+# Source = "GitHub Actions".
+
 on:
   push:
     branches: [main]
