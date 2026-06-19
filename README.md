@@ -88,13 +88,13 @@ This is your protection against a cleared browser, a new phone, a botched update
 or wanting the same garden in two places. Take a backup now and then, and
 especially before deploying a new version.
 
-## Moving to automatic multi-device sync (later)
+## Cross-device sync (Supabase)
 
-Manual backup/restore covers "don't lose it" and "move it between devices". If you
-later want the garden to sync automatically across phone/tablet/computer, that's a
-future upgrade: point the storage layer at a small cloud store (e.g. Supabase or
-Firebase). The storage functions are isolated near the top of `GardenManager.jsx`
-(`rawGet` / `rawSet`), so that change is contained to one place.
+The app can sync your garden across phone, tablet and computer automatically. It's
+off until you connect a Supabase project (the app runs local-only until then).
+Full one-time instructions — SQL, settings and where to paste your keys — are in
+**SUPABASE_SETUP.md**. The storage and sync code lives in `src/cloud.js`,
+`src/supabaseConfig.js` and `src/main.jsx`.
 
 ---
 

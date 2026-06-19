@@ -232,6 +232,12 @@ function buildLibrary(data) {
 }
 const LibCtx = React.createContext(null);
 const useLib = () => React.useContext(LibCtx);
+// Cloud sync is injected by the standalone build (main.jsx). In the in-chat
+// preview this stays null, so the app runs purely local. Shape when present:
+// { configured, session, signIn, signUp, signOut, pull:()=>({data,updatedAt})|null, push:(payload)=>void }
+const CloudCtx = React.createContext(null);
+export { CloudCtx };
+const useCloud = () => React.useContext(CloudCtx);
 
 // common NZ home-garden varieties (general knowledge, in our own words —
 // for the real depth, browse a retail catalogue like Kings Seeds or Egmont)
@@ -410,9 +416,54 @@ export default function GardenManager() {
   const [showPlace, setShowPlace] = useState(false);
   const now = new Date(); const month = now.getMonth() + 1;
   const place = data.place || DEFAULT_PLACE; const hemi = place.hemisphere;
+  const cloud = useCloud();
+  const stampRef = useRef(0);        // updatedAt we last wrote
+  const suppressRef = useRef(false); // skip one save cycle when adopting remote
+  const pushTimer = useRef(null);
+  const [sync, setSync] = useState({ state: "idle", at: null }); // idle|syncing|synced|error|offline
 
-  useEffect(() => { loadData().then((d) => { setData(d); setLoaded(true); }); }, []);
-  useEffect(() => { if (loaded) saveData(data); }, [data, loaded]);
+  // pull remote and adopt-or-push based on which side is newer (last write wins)
+  const reconcile = React.useCallback(async () => {
+    if (!cloud?.session) return;
+    setSync((s) => ({ ...s, state: "syncing" }));
+    try {
+      const remote = await cloud.pull();
+      const localStamp = stampRef.current || (data.updatedAt || 0);
+      if (!remote) { await cloud.push({ ...data, updatedAt: localStamp || Date.now() }); }
+      else if ((remote.updatedAt || 0) > localStamp) {
+        suppressRef.current = true; stampRef.current = remote.updatedAt || 0;
+        const adopted = normalize(remote.data); setData(adopted); saveData({ ...adopted, updatedAt: remote.updatedAt });
+      } else if (localStamp > (remote.updatedAt || 0)) { await cloud.push({ ...data, updatedAt: localStamp }); }
+      setSync({ state: "synced", at: Date.now() });
+    } catch (e) { setSync({ state: "error", at: Date.now() }); }
+  }, [cloud, data]);
+
+  useEffect(() => { loadData().then((d) => { setData(d); stampRef.current = d.updatedAt || 0; setLoaded(true); }); }, []);
+
+  // persist locally on every change, and push to cloud (debounced) when signed in
+  useEffect(() => {
+    if (!loaded) return;
+    if (suppressRef.current) { suppressRef.current = false; return; }
+    const stamp = Date.now(); stampRef.current = stamp;
+    const payload = { ...data, updatedAt: stamp };
+    saveData(payload);
+    if (cloud?.session) {
+      setSync((s) => ({ ...s, state: "syncing" }));
+      clearTimeout(pushTimer.current);
+      pushTimer.current = setTimeout(() => {
+        cloud.push(payload).then(() => setSync({ state: "synced", at: Date.now() })).catch(() => setSync({ state: "error", at: Date.now() }));
+      }, 900);
+    }
+  }, [data, loaded]);
+
+  // reconcile on sign-in and when the tab regains focus (e.g. opening the phone)
+  useEffect(() => { if (loaded && cloud?.session) reconcile(); }, [loaded, cloud?.session]);
+  useEffect(() => {
+    if (!cloud?.session) return;
+    const onVis = () => { if (document.visibilityState === "visible") reconcile(); };
+    window.addEventListener("focus", onVis); document.addEventListener("visibilitychange", onVis);
+    return () => { window.removeEventListener("focus", onVis); document.removeEventListener("visibilitychange", onVis); };
+  }, [cloud?.session, reconcile]);
   useEffect(() => {
     const l = document.createElement("link"); l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Public+Sans:wght@400;500;600&display=swap";
@@ -448,6 +499,10 @@ export default function GardenManager() {
           </div>
           <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex" }}><Settings size={18} /></button>
         </div>
+        {cloud?.session && <div style={{ fontSize: 11, color: C.sageSoft, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sync.state === "error" ? C.harvest : sync.state === "syncing" ? "#E7C24B" : C.sageSoft }} />
+          {sync.state === "syncing" ? "Syncing…" : sync.state === "error" ? "Sync error — will retry" : sync.at ? "Synced across your devices" : "Synced"}
+        </div>}
       </header>
 
       <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
@@ -466,7 +521,7 @@ export default function GardenManager() {
         {tab === "plants" && <PlantsView data={data} setData={setData} month={month} display={display} />}
         {tab === "report" && <ReportView data={data} month={month} hemi={hemi} display={display} />}
       </main>
-      {showPlace && <PlaceSettings data={data} setData={setData} close={() => setShowPlace(false)} />}
+      {showPlace && <PlaceSettings data={data} setData={setData} close={() => setShowPlace(false)} cloud={cloud} sync={sync} reconcile={reconcile} />}
     </div>
     </LibCtx.Provider>
   );
@@ -1451,7 +1506,7 @@ function PlantEditor({ type, plant, data, setData, close }) {
   );
 }
 
-function PlaceSettings({ data, setData, close }) {
+function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
   const place = data.place || DEFAULT_PLACE;
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1459,6 +1514,20 @@ function PlaceSettings({ data, setData, close }) {
   const [results, setResults] = useState(null);
   const [lat, setLat] = useState(place.lat);
   const [lon, setLon] = useState(place.lon);
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [authMsg, setAuthMsg] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const doAuth = async (mode) => {
+    setAuthBusy(true); setAuthMsg(null);
+    try { const res = mode === "up" ? await cloud.signUp(email.trim(), pw) : await cloud.signIn(email.trim(), pw);
+      if (res?.error) setAuthMsg(res.error.message || "That didn't work.");
+      else if (mode === "up" && !res?.session) setAuthMsg("Account created. Check your email to confirm, then sign in.");
+      else setAuthMsg(null);
+    } catch (e) { setAuthMsg(String(e?.message || e)); }
+    setAuthBusy(false);
+  };
 
   const search = async () => {
     if (!q.trim()) return; setBusy(true); setErr(null); setResults(null);
@@ -1527,6 +1596,31 @@ function PlaceSettings({ data, setData, close }) {
           <div style={{ flex: 1 }}><span style={{ fontSize: 11, color: C.muted }}>Longitude</span><input value={lon} onChange={(e) => setLon(e.target.value)} style={inp} /></div>
           <button onClick={saveManual} style={{ ...btn(C.soil), alignSelf: "flex-end" }}><Check size={14} /></button>
         </div>
+
+        {cloud?.configured && <>
+          <label style={lbl}>Sync across devices</label>
+          {cloud.session ? (
+            <div style={{ ...card, padding: 11, background: C.panel2 }}>
+              <div style={{ fontSize: 13, color: C.ink }}>Signed in as <strong>{cloud.session.user?.email}</strong></div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{sync?.state === "syncing" ? "Syncing…" : sync?.state === "error" ? "Last sync failed — it'll retry automatically." : "Your garden is backed up to the cloud and shared with any device you sign in on."}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+                <button onClick={() => reconcile && reconcile()} style={btn(C.fern)}><RefreshCw size={14} /> Sync now</button>
+                <button onClick={() => cloud.signOut()} style={btnOutline(C.muted)}>Sign out</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...card, padding: 11, background: C.panel2 }}>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 7, lineHeight: 1.5 }}>Sign in to keep this garden in sync across your phone, tablet and computer. Use the same email &amp; password on each device.</div>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="username" style={{ ...inp, marginBottom: 6 }} />
+              <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" placeholder="Password" autoComplete="current-password" onKeyDown={(e) => e.key === "Enter" && doAuth("in")} style={inp} />
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <button onClick={() => doAuth("in")} disabled={authBusy} style={btn(C.fern)}>{authBusy ? "…" : "Sign in"}</button>
+                <button onClick={() => doAuth("up")} disabled={authBusy} style={btnOutline(C.fern)}>Create account</button>
+              </div>
+              {authMsg && <p style={{ fontSize: 12, color: C.beet, marginTop: 7 }}>{authMsg}</p>}
+            </div>
+          )}
+        </>}
 
         <label style={lbl}>Backup &amp; restore</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
