@@ -31,6 +31,8 @@ const FAMILIES = {
   convolvulaceae: { label: "Kūmara",       color: "#A0703E", group: "flexible" },
   lamiaceae:      { label: "Herbs",        color: "#5E8A6E", group: "flexible" },
   berryfam:       { label: "Berries",      color: "#A23E55", group: "flexible" },
+  polygonaceae:   { label: "Rhubarb family", color: "#9B5B6E", group: "flexible" },
+  asparagaceae:   { label: "Asparagus family", color: "#6E9A6A", group: "flexible" },
 };
 
 const ROTATION_SEQUENCE = ["legume", "brassica", "fruiting", "root"];
@@ -59,11 +61,11 @@ const shiftMonths = (arr, s) => (arr || []).map((m) => ((m - 1 + s) % 12) + 1);
 
 // veg: sow months for Glenbrook, spacing(cm), sun, days-to-harvest(d), note
 const VEG = [
-  { name:"Tomato", fam:"solanaceae", sow:[9,10,11,12], spacing:50, sun:"Full sun", d:80, note:"Start under cover Aug–Sep; plant out after frost (Oct). Stake & de-lateral." },
+  { name:"Tomato", fam:"solanaceae", sow:[9,10,11,12], spacing:50, sun:"Full sun", d:80, note:"Start under cover Aug–Sep; plant out after frost (Oct). Stake & de-lateral.", tasks:[{name:"Liquid feed",months:[11,12,1,2]},{name:"Remove laterals",months:[11,12,1]}] },
   { name:"Capsicum", fam:"solanaceae", sow:[10,11,12], spacing:45, sun:"Full sun", d:90, note:"Loves a sheltered sunny corner. Slow to start." },
   { name:"Chilli", fam:"solanaceae", sow:[10,11,12], spacing:40, sun:"Full sun", d:100, note:"Heat-hungry; great in a pot against a warm wall." },
   { name:"Eggplant", fam:"solanaceae", sow:[10,11,12], spacing:50, sun:"Full sun", d:90, note:"Needs a long warm spell — your hottest spot." },
-  { name:"Potato", fam:"solanaceae", sow:[8,9,10,11,12], spacing:35, sun:"Full sun", d:100, note:"Plant after last frost; mound soil as they grow." },
+  { name:"Potato", fam:"solanaceae", sow:[8,9,10,11,12], spacing:35, sun:"Full sun", d:100, note:"Plant after last frost; mound soil as they grow.", tasks:[{name:"Mound up soil",months:[10,11]}] },
   { name:"Courgette", fam:"cucurbitaceae", sow:[10,11,12,1], spacing:90, sun:"Full sun", d:50, note:"Wildly productive — two plants feed a family. Pick young." },
   { name:"Pumpkin", fam:"cucurbitaceae", sow:[10,11,12], spacing:120, sun:"Full sun", d:110, note:"Needs room to ramble. Cure in sun before storing." },
   { name:"Cucumber", fam:"cucurbitaceae", sow:[10,11,12,1], spacing:45, sun:"Full sun", d:55, note:"Train up a frame to save space and keep fruit clean." },
@@ -72,7 +74,7 @@ const VEG = [
   { name:"Climbing beans", fam:"fabaceae", sow:[10,11,12], spacing:20, sun:"Full sun", d:65, note:"Up a teepee; crops for months over summer." },
   { name:"Broad beans", fam:"fabaceae", sow:[3,4,5,6,7], spacing:20, sun:"Full sun", d:120, note:"The classic winter legume — sow now through mid-winter." },
   { name:"Peas", fam:"fabaceae", sow:[3,4,8,9], spacing:8, sun:"Full sun", d:70, note:"Best in cooler months here; give them something to climb." },
-  { name:"Cabbage", fam:"brassicaceae", sow:[1,2,3,4,8,9,10], spacing:45, sun:"Full sun", d:90, note:"Net against white butterfly. Steady feeder." },
+  { name:"Cabbage", fam:"brassicaceae", sow:[1,2,3,4,8,9,10], spacing:45, sun:"Full sun", d:90, note:"Net against white butterfly. Steady feeder.", tasks:[{name:"Net vs white butterfly",months:[10,11,12,1,2]}] },
   { name:"Broccoli", fam:"brassicaceae", sow:[1,2,3,4,8,9], spacing:45, sun:"Full sun", d:75, note:"Keep cutting side shoots after the main head." },
   { name:"Cauliflower", fam:"brassicaceae", sow:[1,2,3,11,12], spacing:50, sun:"Full sun", d:95, note:"Fussier than broccoli — steady moisture & rich soil." },
   { name:"Kale", fam:"brassicaceae", sow:[1,2,3,4,9,10], spacing:40, sun:"Full–part sun", d:60, note:"Tough as old boots; sweeter after a cold snap." },
@@ -89,7 +91,7 @@ const VEG = [
   { name:"Silverbeet", fam:"amaranthaceae", sow:[2,3,4,8,9,10,11], spacing:30, sun:"Part–full sun", d:55, note:"Near year-round here; pick outer leaves and it keeps giving." },
   { name:"Spinach", fam:"amaranthaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Prefers cool months; bolts in heat." },
   { name:"Onion", fam:"amaryllidaceae", sow:[4,5,6,7], spacing:10, sun:"Full sun", d:150, note:"Long-day types from seed in autumn–winter for summer bulbs." },
-  { name:"Garlic", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:210, note:"Tradition: plant by the shortest day, lift by the longest." },
+  { name:"Garlic", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:210, note:"Tradition: plant by the shortest day, lift by the longest.", tasks:[{name:"Stop watering",months:[11]},{name:"Lift & dry bulbs",months:[12]}] },
   { name:"Leek", fam:"amaryllidaceae", sow:[9,10,11,12], spacing:15, sun:"Full sun", d:120, note:"Trench and blanch the stems for length." },
   { name:"Spring onion", fam:"amaryllidaceae", sow:[2,3,4,8,9,10,11], spacing:5, sun:"Full–part sun", d:60, note:"Quick & forgiving; sow in clumps." },
   { name:"Shallot", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:150, note:"Plant winter, harvest summer — garlic's milder cousin." },
@@ -98,27 +100,67 @@ const VEG = [
   { name:"Coriander", fam:"lamiaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Bolts in heat; sow in cooler months for leaf." },
   { name:"Parsley", fam:"apiaceae", sow:[2,3,9,10,11], spacing:20, sun:"Part–full sun", d:70, note:"Slow to start but a long, generous cropper." },
   { name:"Strawberry", fam:"berryfam", sow:[4,5,6,7], spacing:30, sun:"Full sun", d:120, note:"Plant runners in autumn–winter; mulch with straw. Renew every ~3 yrs." },
+  { name:"Mint", fam:"lamiaceae", sow:[9,10,11,12,1,2], spacing:30, sun:"Part–full sun", d:60, note:"Vigorous perennial — contain it in a pot or it takes over. Cut often." },
+  { name:"Thyme", fam:"lamiaceae", sow:[9,10,11], spacing:25, sun:"Full sun", d:90, note:"Woody perennial; loves dry, sunny spots. Trim after flowering." },
+  { name:"Oregano / Marjoram", fam:"lamiaceae", sow:[9,10,11], spacing:30, sun:"Full sun", d:80, note:"Heat-loving perennial; flavour intensifies in a lean, sunny bed." },
+  { name:"Rosemary", fam:"lamiaceae", sow:[9,10,11], spacing:60, sun:"Full sun", d:180, note:"Shrubby perennial — easiest from a cutting. Drought-hardy once set." },
+  { name:"Sage", fam:"lamiaceae", sow:[9,10,11], spacing:45, sun:"Full sun", d:90, note:"Perennial; trim to keep bushy. Dislikes wet feet." },
+  { name:"Tarragon", fam:"asteraceae", sow:[9,10], spacing:45, sun:"Full–part sun", d:90, note:"French tarragon from division/cuttings — seed-grown is the bland Russian kind." },
+  { name:"Dill", fam:"apiaceae", sow:[9,10,11,1,2], spacing:20, sun:"Full sun", d:60, note:"Bolts quickly — sow a little, often. Good by carrots & beans." },
+  { name:"Fennel (Florence)", fam:"apiaceae", sow:[9,10,11,1,2], spacing:30, sun:"Full sun", d:90, note:"Swelling bulbs from autumn sowings; keep moist or it bolts." },
+  { name:"Chives", fam:"amaryllidaceae", sow:[8,9,10,11], spacing:15, sun:"Full–part sun", d:80, note:"Clumping perennial; snip outer leaves and it keeps coming." },
+  { name:"Rhubarb", fam:"polygonaceae", sow:[6,7,8], spacing:90, sun:"Full–part sun", d:365, note:"Plant crowns in winter; don't harvest the first year. Never eat the leaves." },
+  { name:"Asparagus", fam:"asparagaceae", sow:[7,8,9], spacing:40, sun:"Full sun", d:730, note:"Plant crowns into a permanent bed; wait two years before cropping — then decades of spears." },
+  { name:"Globe artichoke", fam:"asteraceae", sow:[8,9,10], spacing:90, sun:"Full sun", d:180, note:"Big handsome perennial; harvest the buds before they open." },
+  { name:"Kohlrabi", fam:"brassicaceae", sow:[1,2,3,8,9,10], spacing:20, sun:"Full sun", d:60, note:"Quick & mild; harvest at tennis-ball size before it turns woody." },
+  { name:"Mizuna", fam:"brassicaceae", sow:[2,3,4,8,9,10], spacing:20, sun:"Part sun", d:40, note:"Mild mustard; cut-and-come-again through the cooler months." },
+  { name:"Mustard greens", fam:"brassicaceae", sow:[2,3,4,8,9], spacing:20, sun:"Part sun", d:45, note:"Peppery leaves; favour the cooler shoulders or it bolts." },
+  { name:"Watercress", fam:"brassicaceae", sow:[9,10,11,2,3], spacing:15, sun:"Part sun", d:50, note:"Loves wet feet — keep constantly moist, or grow in a pot sitting in a saucer." },
+  { name:"Celeriac", fam:"apiaceae", sow:[9,10,11], spacing:30, sun:"Full sun", d:150, note:"Long season; steady moisture for a good swollen root." },
+  { name:"Endive", fam:"asteraceae", sow:[1,2,3,8,9], spacing:30, sun:"Part–full sun", d:80, note:"Blanch the heart a couple of weeks before cutting to cut bitterness." },
 ];
 
 const FRUIT = [
-  { name:"Apple", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Apr", prune:"Winter, while dormant", feed:"Compost + balanced fertiliser early spring", note:"Thin fruit in Nov; copper spray at leaf-fall & bud-burst for black spot." },
-  { name:"Pear", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Apr", prune:"Winter, while dormant", feed:"Compost early spring", note:"Watch for codling moth in summer; copper as for apples." },
-  { name:"Plum", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", prune:"Summer, after fruiting (not wet winter)", feed:"Compost early spring", note:"Summer pruning avoids silver leaf. Copper at bud-swell." },
-  { name:"Peach / Nectarine", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", prune:"After harvest, late summer", feed:"Compost + potash spring", note:"Copper + oil at bud-swell for leaf curl — timing is everything." },
-  { name:"Apricot", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Jan", prune:"Dry summer weather", feed:"Compost early spring", note:"Needs a sheltered, sunny spot." },
-  { name:"Feijoa", group:"Subtropical", plant:"Spring or autumn", harvest:"Apr–May", prune:"After harvest, late autumn", feed:"Citrus/general fertiliser spring & summer", note:"Hardy here. Plant two varieties for better fruit set." },
-  { name:"Lemon", group:"Citrus", plant:"Spring", harvest:"Most of year (peak winter)", prune:"Light, after fruiting", feed:"Citrus food early spring & late summer", note:"Frost-tender when young — shelter it; mulch, never let it dry." },
-  { name:"Mandarin / Orange", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Warm, north-facing, sheltered spot is best." },
-  { name:"Fig", group:"Subtropical", plant:"Winter (dormant)", harvest:"Feb–Apr", prune:"Winter, lightly", feed:"Light compost spring", note:"Thrives warm & dry; container-growing curbs its vigour." },
+  { name:"Apple", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Apr", hmon:[2,3,4], prune:"Winter, while dormant", feed:"Compost + balanced fertiliser early spring", note:"Thin fruit in Nov; copper spray at leaf-fall & bud-burst for black spot.", tasks:[{name:"Winter prune",months:[6,7]},{name:"Copper spray (leaf-fall & bud-burst)",months:[5,9]},{name:"Thin fruit",months:[11]},{name:"Feed",months:[9]}] },
+  { name:"Pear", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Apr", hmon:[2,3,4], prune:"Winter, while dormant", feed:"Compost early spring", note:"Watch for codling moth in summer; copper as for apples.", tasks:[{name:"Winter prune",months:[6,7]},{name:"Feed",months:[9]},{name:"Codling moth traps",months:[10,11]}] },
+  { name:"Nashi pear", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Mar", hmon:[2,3], prune:"Winter, while dormant", feed:"Compost early spring", note:"Thin hard in spring — they over-set. Pick when they part easily from the spur.", tasks:[{name:"Winter prune",months:[7]},{name:"Thin fruit",months:[10,11]},{name:"Feed",months:[9]}] },
+  { name:"Quince", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Apr–May", hmon:[4,5], prune:"Winter, lightly", feed:"Compost early spring", note:"Hardy and ornamental; fruit needs cooking. Leave to ripen fully gold.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Plum", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"Summer, after fruiting (not wet winter)", feed:"Compost early spring", note:"Summer pruning avoids silver leaf. Copper at bud-swell.", tasks:[{name:"Summer prune",months:[1,2]},{name:"Copper spray (bud-swell)",months:[8]},{name:"Feed",months:[9]}] },
+  { name:"Peach / Nectarine", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"After harvest, late summer", feed:"Compost + potash spring", note:"Copper + oil at bud-swell for leaf curl — timing is everything.", tasks:[{name:"Copper + oil for leaf curl",months:[7,8]},{name:"Prune after harvest",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Apricot", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Jan", hmon:[12,1], prune:"Dry summer weather", feed:"Compost early spring", note:"Needs a sheltered, sunny spot.", tasks:[{name:"Prune in dry weather",months:[1,2]},{name:"Feed",months:[9]}] },
+  { name:"Cherry", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Jan", hmon:[12,1], prune:"Summer, after fruiting", feed:"Compost early spring", note:"Net against birds as they colour. Prune only in dry summer weather.", tasks:[{name:"Summer prune",months:[1,2]},{name:"Net against birds",months:[11,12]},{name:"Feed",months:[9]}] },
+  { name:"Almond", group:"Nut", plant:"Bare-root Jun–Aug", harvest:"Feb–Mar", hmon:[2,3], prune:"After harvest", feed:"Compost early spring", note:"Flowers very early — a frost in bloom costs the crop. Give it the warmest spot.", tasks:[{name:"Prune after harvest",months:[3]},{name:"Feed",months:[9]}] },
+  { name:"Walnut", group:"Nut", plant:"Bare-root Jun–Aug", harvest:"Apr–May", hmon:[4,5], prune:"Late summer (avoid bleeding)", feed:"Compost early spring", note:"Big, long-lived tree — give it room. Prune only in late summer.", tasks:[{name:"Prune (late summer)",months:[2]},{name:"Feed",months:[9]}] },
+  { name:"Macadamia", group:"Nut", plant:"Spring", harvest:"Apr–Jul", hmon:[4,5,6,7], prune:"Light, after harvest", feed:"Citrus/general fertiliser spring & summer", note:"Slow but generous evergreen; shelter from frost when young.", tasks:[{name:"Light prune",months:[8]},{name:"Feed",months:[9,12]}] },
+  { name:"Feijoa", group:"Subtropical", plant:"Spring or autumn", harvest:"Apr–May", hmon:[4,5], prune:"After harvest, late autumn", feed:"Citrus/general fertiliser spring & summer", note:"Hardy here. Plant two varieties for better fruit set. Great as a hedge.", tasks:[{name:"Prune after harvest",months:[5,6]},{name:"Feed",months:[9,12]}] },
+  { name:"Avocado", group:"Subtropical", plant:"Spring", harvest:"Aug–Nov", hmon:[8,9,10,11], prune:"Light, after fruiting", feed:"Citrus/general fertiliser spring & summer", note:"Shelter from wind & frost when young; must have free-draining soil — never wet feet.", tasks:[{name:"Light prune",months:[11]},{name:"Feed",months:[9,12]},{name:"Deep mulch",months:[10]}] },
+  { name:"Tamarillo", group:"Subtropical", plant:"Spring", harvest:"May–Aug", hmon:[5,6,7,8], prune:"After fruiting", feed:"Citrus/general fertiliser spring & summer", note:"Fast but short-lived (~5 yrs) and frost-tender — plant a fresh one every few years.", tasks:[{name:"Prune after fruiting",months:[11]},{name:"Feed",months:[9,12]}] },
+  { name:"Persimmon", group:"Subtropical", plant:"Bare-root Jun–Aug", harvest:"Apr–Jun", hmon:[4,5,6], prune:"Winter, lightly", feed:"Compost early spring", note:"Astringent types need to go soft-ripe; non-astringent (Fuyu) eat crisp.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Olive", group:"Subtropical", plant:"Spring", harvest:"May–Jun", hmon:[5,6], prune:"After harvest", feed:"Compost early spring", note:"Loves sun and sharp drainage; drought-hardy once established. Fruit needs curing.", tasks:[{name:"Prune after harvest",months:[7,8]},{name:"Feed",months:[9]}] },
+  { name:"Fig", group:"Subtropical", plant:"Winter (dormant)", harvest:"Feb–Apr", hmon:[2,3,4], prune:"Winter, lightly", feed:"Light compost spring", note:"Thrives warm & dry; container-growing curbs its vigour.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Lemon", group:"Citrus", plant:"Spring", harvest:"Most of year (peak winter)", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food early spring & late summer", note:"Frost-tender when young — shelter it; mulch, never let it dry.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[3]}] },
+  { name:"Lemonade", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Sweeter than a lemon, eaten fresh; among the hardier citrus.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[3]}] },
+  { name:"Lime", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[4,5,6,7], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"The most frost-tender citrus — warm sheltered wall or a pot you can move.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Frost protection",months:[6,7]}] },
+  { name:"Kaffir lime", group:"Citrus", plant:"Spring", harvest:"Leaves year-round", hmon:[], prune:"Pinch to shape", feed:"Citrus food spring & late summer", note:"Grown for its fragrant double leaves; very frost-tender, so a pot is ideal.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Frost protection",months:[6,7]}] },
+  { name:"Mandarin / Orange", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Warm, north-facing, sheltered spot is best.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[9]}] },
+  { name:"Grapefruit", group:"Citrus", plant:"Spring", harvest:"Winter–spring", hmon:[7,8,9], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Big tree, long-hanging fruit that sweetens the longer it stays on.", tasks:[{name:"Citrus feed",months:[9,2]}] },
+  { name:"Grape", group:"Vine", plant:"Winter (dormant)", harvest:"Mar–Apr", hmon:[3,4], prune:"Winter, while dormant", feed:"Compost early spring", note:"Needs a sturdy frame and a sunny wall; trim leaves in summer for airflow.", tasks:[{name:"Winter prune",months:[7]},{name:"Summer trim & thin",months:[12,1]},{name:"Feed",months:[9]}] },
+  { name:"Passionfruit", group:"Vine", plant:"Spring", harvest:"Mar–May", hmon:[3,4,5], prune:"Spring", feed:"Citrus/general fertiliser spring & summer", note:"Short-lived, frost-tender vine — give it a strong fence and replace every few years.", tasks:[{name:"Spring prune",months:[9]},{name:"Feed",months:[9,12]}] },
 ];
 
 const BERRY = [
-  { name:"Raspberry", icon:"cane", plant:"Winter, bare-root", harvest:"Dec–Feb", prune:"Cut fruited canes to ground after harvest; tie in new canes", feed:"Compost + potash in spring", note:"Give them a wire frame and they'll spread happily." },
-  { name:"Blueberry", icon:"bush", plant:"Winter–spring", harvest:"Dec–Feb", prune:"Light winter prune; remove old wood after 4–5 yrs", feed:"Acid (azalea) fertiliser in spring", note:"Needs acidic soil (pH 4.5–5.5) — a dedicated bed or pot." },
-  { name:"Boysenberry", icon:"cane", plant:"Winter", harvest:"Dec–Jan", prune:"Remove fruited canes after harvest", feed:"Compost in spring", note:"Vigorous — keep it on a sturdy frame." },
-  { name:"Blackcurrant", icon:"bush", plant:"Winter, bare-root", harvest:"Dec–Jan", prune:"Winter: remove a third of the oldest wood", feed:"Compost + potash spring", note:"Tolerates a little shade." },
-  { name:"Gooseberry", icon:"bush", plant:"Winter", harvest:"Nov–Dec", prune:"Open-centre prune in winter", feed:"Compost spring", note:"Watch for sawfly stripping the leaves." },
-  { name:"Strawberry", icon:"bush", plant:"Autumn–winter runners", harvest:"Oct–Jan", prune:"Trim old leaves & runners after fruiting", feed:"Potash-rich feed at flowering", note:"Mulch with straw; replace plants every ~3 years." },
+  { name:"Raspberry", icon:"cane", plant:"Winter, bare-root", harvest:"Dec–Feb", hmon:[12,1,2], prune:"Cut fruited canes to ground after harvest; tie in new canes", feed:"Compost + potash in spring", note:"Give them a wire frame and they'll spread happily.", tasks:[{name:"Remove fruited canes",months:[3,4]},{name:"Feed",months:[9]}] },
+  { name:"Blueberry", icon:"bush", plant:"Winter–spring", harvest:"Dec–Feb", hmon:[12,1,2], prune:"Light winter prune; remove old wood after 4–5 yrs", feed:"Acid (azalea) fertiliser in spring", note:"Needs acidic soil (pH 4.5–5.5) — a dedicated bed or pot.", tasks:[{name:"Light winter prune",months:[7]},{name:"Acid feed",months:[9]},{name:"Net against birds",months:[12]}] },
+  { name:"Boysenberry", icon:"cane", plant:"Winter", harvest:"Dec–Jan", hmon:[12,1], prune:"Remove fruited canes after harvest", feed:"Compost in spring", note:"Vigorous — keep it on a sturdy frame.", tasks:[{name:"Remove fruited canes",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Blackberry (thornless)", icon:"cane", plant:"Winter", harvest:"Jan–Feb", hmon:[1,2], prune:"Remove fruited canes after harvest", feed:"Compost in spring", note:"Choose a thornless variety; train new canes along wires as they grow.", tasks:[{name:"Remove fruited canes",months:[3,4]},{name:"Feed",months:[9]}] },
+  { name:"Loganberry", icon:"cane", plant:"Winter", harvest:"Dec–Jan", hmon:[12,1], prune:"Remove fruited canes after harvest", feed:"Compost in spring", note:"Raspberry × blackberry — tart, heavy cropper on a frame.", tasks:[{name:"Remove fruited canes",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Tayberry", icon:"cane", plant:"Winter", harvest:"Dec–Jan", hmon:[12,1], prune:"Remove fruited canes after harvest", feed:"Compost in spring", note:"Sweeter, larger loganberry type; same cane care.", tasks:[{name:"Remove fruited canes",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Blackcurrant", icon:"bush", plant:"Winter, bare-root", harvest:"Dec–Jan", hmon:[12,1], prune:"Winter: remove a third of the oldest wood", feed:"Compost + potash spring", note:"Tolerates a little shade.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Redcurrant", icon:"bush", plant:"Winter, bare-root", harvest:"Dec–Jan", hmon:[12,1], prune:"Winter, open-centre on a permanent framework", feed:"Compost + potash spring", note:"Fruits on older wood — prune differently to blackcurrant.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]},{name:"Net against birds",months:[12]}] },
+  { name:"Whitecurrant", icon:"bush", plant:"Winter, bare-root", harvest:"Dec–Jan", hmon:[12,1], prune:"Winter, as redcurrant", feed:"Compost + potash spring", note:"Sweeter, milder redcurrant; same care.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Gooseberry", icon:"bush", plant:"Winter", harvest:"Nov–Dec", hmon:[11,12], prune:"Open-centre prune in winter", feed:"Compost spring", note:"Watch for sawfly stripping the leaves.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]},{name:"Check for sawfly",months:[10,11]}] },
+  { name:"Cranberry", icon:"bush", plant:"Spring", harvest:"Mar–Apr", hmon:[3,4], prune:"Light, after harvest", feed:"Acid fertiliser in spring", note:"Low spreading mat; wants acidic, constantly moist soil.", tasks:[{name:"Acid feed",months:[9]}] },
+  { name:"Strawberry", icon:"bush", plant:"Autumn–winter runners", harvest:"Oct–Jan", hmon:[10,11,12,1], prune:"Trim old leaves & runners after fruiting", feed:"Potash-rich feed at flowering", note:"Mulch with straw; replace plants every ~3 years.", tasks:[{name:"Trim old leaves & runners",months:[3]},{name:"Feed at flowering",months:[9]},{name:"Straw mulch",months:[10]}] },
 ];
 
 const SECTION_KINDS = {
@@ -192,6 +234,20 @@ async function loadData() {
 }
 async function saveData(d) { try { await rawSet(KEY, JSON.stringify(d)); } catch (e) { console.error(e); } }
 
+// --- sync safety: never let a blank/new device clobber a real cloud garden ---
+const isEmptyGarden = (d) => !d || ((d.sections || []).length === 0 && !d.bg);
+const _syncKey = (uid) => `glenbrook-garden:synced:${uid || "anon"}`;
+const hasSyncedBefore = (uid) => { try { return localStorage.getItem(_syncKey(uid)) === "1"; } catch { return false; } };
+const markSynced = (uid) => { try { localStorage.setItem(_syncKey(uid), "1"); } catch {} };
+
+// Box geometry (x,y,w,h in %) is the source of truth. A box's real-world size is
+// derived from its parent's real size; typing a size converts back to a box %.
+const realOf = (boxW, boxH, parent) => (parent && parent.w && parent.l)
+  ? { w: Math.round((boxW / 100) * parent.w * 10) / 10, l: Math.round((boxH / 100) * parent.l * 10) / 10 }
+  : null;
+const boxFromReal = (real, parent) => ({ w: clamp((real.w || 0) / parent.w * 100, 2, 100), h: clamp((real.l || 0) / parent.l * 100, 2, 100) });
+const dimLabel = (r) => r ? `${r.w}×${r.l}m` : null;
+
 function resizeImage(file, maxDim = 1280) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -219,6 +275,8 @@ function buildLibrary(data) {
       color: e.color || p.color || famColor(p, type),
       varieties: (e.varieties ?? p.varieties ?? NZ_VARIETIES[p.name]) || "" };
     if (type === "veg") merged.sow = shiftMonths(merged.sow, shift); // canonical (NZ) → local hemisphere
+    if (merged.hmon) merged.hmon = shiftMonths(merged.hmon, shift);
+    if (Array.isArray(merged.tasks)) merged.tasks = merged.tasks.map((t) => ({ ...t, months: shiftMonths(t.months, shift) }));
     return merged; };
   const veg = [...VEG, ...(cp.veg || [])].map((p) => apply(p, "veg"));
   const fruit = [...FRUIT, ...(cp.fruit || [])].map((p) => apply(p, "fruit"));
@@ -304,11 +362,25 @@ function NorthControl({ north, setNorth, hemi = "south" }) {
   );
 }
 
-function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, north, onBg, uploading, placeholder, children }) {
+function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, north, onBg, uploading, placeholder, crop, gray, children }) {
+  // crop = { bg, ar, region:{x,y,w,h} } shows a sub-rectangle of a parent image
+  let bgStyle, aspect = bg && bgAR ? `${bgAR}` : defaultAR;
+  const hasImg = !!(crop && crop.bg && crop.region) || !!bg;
+  if (crop && crop.bg && crop.region) {
+    const sx = clamp(crop.region.w, 2, 100) / 100, sy = clamp(crop.region.h, 2, 100) / 100;
+    const px = clamp(crop.region.x, 0, 100) / 100, py = clamp(crop.region.y, 0, 100) / 100;
+    const posX = sx >= 1 ? 0 : (px / (1 - sx)) * 100;
+    const posY = sy >= 1 ? 0 : (py / (1 - sy)) * 100;
+    bgStyle = `${posX}% ${posY}% / ${100 / sx}% ${100 / sy}% no-repeat url(${crop.bg})`;
+    if (crop.ar) aspect = `${(sx / sy) * crop.ar}`;
+  } else {
+    bgStyle = bg ? `center/contain no-repeat url(${bg})` : "transparent";
+  }
   return (
     <div style={{ position: "relative", width: "100%", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
       <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
-        style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: bg && bgAR ? `${bgAR}` : defaultAR, background: bg ? `center/contain no-repeat url(${bg})` : "transparent", touchAction: "none" }}>
+        style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: "none" }}>
+        {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
         {placeholder}
         {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
         {children}
@@ -419,21 +491,33 @@ export default function GardenManager() {
   const cloud = useCloud();
   const stampRef = useRef(0);        // updatedAt we last wrote
   const suppressRef = useRef(false); // skip one save cycle when adopting remote
+  const initRef = useRef(true);      // skip the very first persist (the freshly-loaded value)
   const pushTimer = useRef(null);
-  const [sync, setSync] = useState({ state: "idle", at: null }); // idle|syncing|synced|error|offline
+  const [sync, setSync] = useState({ state: "idle", at: null }); // idle|syncing|synced|error
 
-  // pull remote and adopt-or-push based on which side is newer (last write wins)
+  // pull remote and decide which side wins — with strong guards so a blank or
+  // brand-new device can never overwrite a real garden already in the cloud.
   const reconcile = React.useCallback(async () => {
     if (!cloud?.session) return;
+    const uid = cloud.session.user?.id;
     setSync((s) => ({ ...s, state: "syncing" }));
     try {
       const remote = await cloud.pull();
       const localStamp = stampRef.current || (data.updatedAt || 0);
-      if (!remote) { await cloud.push({ ...data, updatedAt: localStamp || Date.now() }); }
-      else if ((remote.updatedAt || 0) > localStamp) {
-        suppressRef.current = true; stampRef.current = remote.updatedAt || 0;
-        const adopted = normalize(remote.data); setData(adopted); saveData({ ...adopted, updatedAt: remote.updatedAt });
-      } else if (localStamp > (remote.updatedAt || 0)) { await cloud.push({ ...data, updatedAt: localStamp }); }
+      const firstTime = !hasSyncedBefore(uid);
+      const adopt = (r) => { suppressRef.current = true; stampRef.current = r.updatedAt || 0;
+        const a = normalize(r.data); setData(a); saveData({ ...a, updatedAt: r.updatedAt }); };
+
+      if (!remote || isEmptyGarden(remote.data)) {
+        // cloud is empty → seed it from local only if we actually have something
+        if (!isEmptyGarden(data)) await cloud.push({ ...data, updatedAt: localStamp || Date.now() });
+      } else {
+        // cloud has a real garden
+        const remoteNewer = (remote.updatedAt || 0) > localStamp;
+        if (firstTime || remoteNewer || isEmptyGarden(data)) adopt(remote);
+        else if (localStamp > (remote.updatedAt || 0)) await cloud.push({ ...data, updatedAt: localStamp });
+      }
+      markSynced(uid);
       setSync({ state: "synced", at: Date.now() });
     } catch (e) { setSync({ state: "error", at: Date.now() }); }
   }, [cloud, data]);
@@ -443,6 +527,7 @@ export default function GardenManager() {
   // persist locally on every change, and push to cloud (debounced) when signed in
   useEffect(() => {
     if (!loaded) return;
+    if (initRef.current) { initRef.current = false; return; } // don't re-persist/stamp the freshly-loaded value
     if (suppressRef.current) { suppressRef.current = false; return; }
     const stamp = Date.now(); stampRef.current = stamp;
     const payload = { ...data, updatedAt: stamp };
@@ -516,7 +601,7 @@ export default function GardenManager() {
       <main style={{ padding: "18px clamp(12px, 4vw, 18px)" }}>
         {tab === "map" && <PropertyTab {...{ data, setData, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }} />}
         {tab === "weather" && <WeatherView place={place} hemi={hemi} month={month} display={display} />}
-        {tab === "season" && <DoNowView data={data} month={month} hemi={hemi} display={display} />}
+        {tab === "season" && <DoNowView data={data} month={month} hemi={hemi} display={display} setTab={setTab} setNav={setNav} setSel={setSel} />}
         {tab === "rotation" && <RotationView data={data} setData={setData} month={month} display={display} setTab={setTab} setNav={setNav} />}
         {tab === "plants" && <PlantsView data={data} setData={setData} month={month} display={display} />}
         {tab === "report" && <ReportView data={data} month={month} hemi={hemi} display={display} />}
@@ -611,6 +696,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
   const [uploading, setUploading] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
   const drag = useDrag(wrapRef, patchSection);
 
@@ -626,47 +712,66 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
   return (
     <div>
       <DateSlider data={data} viewDate={viewDate} setViewDate={setViewDate} />
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <label style={btn(C.soil)}><Upload size={15} /> {data.bg ? "Replace property image" : "Add property image"}
-          <input type="file" accept="image/*" onChange={onUpload} style={{ display: "none" }} /></label>
-        {Object.entries(SECTION_KINDS).map(([k, v]) => (
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => setEditMode(!editMode)} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
+        <button onClick={() => setShowSettings(!showSettings)} style={btnOutline(C.muted)}><Settings size={14} /> Property settings</button>
+        {editMode && Object.entries(SECTION_KINDS).map(([k, v]) => (
           <button key={k} onClick={() => addSection(k)} style={btn(v.color)}><Plus size={14} /> {v.label}</button>
         ))}
       </div>
       <div style={{ marginBottom: 8 }}>
-        <button onClick={() => setShowSettings(!showSettings)} style={btnOutline(C.muted)}><Settings size={14} /> View settings</button>
         {showSettings && (
-          <div style={{ ...card, padding: 12, marginTop: 8 }}>
+          <div style={{ ...card, padding: 12, marginTop: 4 }}>
+            <label style={{ ...btn(C.soil), marginBottom: 10 }}><Upload size={15} /> {data.bg ? "Replace property image" : "Add property image"}
+              <input type="file" accept="image/*" onChange={onUpload} style={{ display: "none" }} /></label>
+            <SizeFields label="Whole property size" dim={data.dimM} onChange={(dimM) => setData((d) => ({ ...d, dimM }))} />
+            <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>Set the property size, then size each area below (or just drag its corner) — areas draw to scale, carry their size inside, and each one's view becomes a cropped piece of this photo.</p>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, marginBottom: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={data.grayBg !== false} onChange={(e) => setData((d) => ({ ...d, grayBg: e.target.checked }))} style={{ accentColor: C.fern, width: 16, height: 16 }} />
+              Fade the photo to grey so the areas stand out
+            </label>
             <ZoomBar zoom={zoom} setZoom={setZoom} />
             <NorthControl north={data.north ?? 0} setNorth={(v) => setData((d) => ({ ...d, north: v }))} hemi={(data.place || DEFAULT_PLACE).hemisphere} />
           </div>)}
       </div>
 
-      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} uploading={uploading}
+      {editMode && data.sections.length > 0 && (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area sizes</strong>
+          {data.dimM?.w ? <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>Type an exact size and the box snaps to it; or drag the corner on the map.</p>
+            : <p style={{ fontSize: 11.5, color: C.beet, margin: "3px 0 8px" }}>Set the whole-property size in Property settings first, then you can size each area in metres.</p>}
+          {data.sections.map((s) => (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.ink, minWidth: 120, fontWeight: 600 }}>{s.name}</span>
+              {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => { const b = boxFromReal(real, data.dimM); patchSection(s.id, b); }} />
+                : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
+            </div>))}
+        </div>)}
+
+      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} uploading={uploading} gray={data.grayBg !== false}
         placeholder={!data.bg && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.muted, textAlign: "center", padding: 24 }}>
             <Home size={30} color={C.sage} />
-            <p style={{ maxWidth: 360, fontSize: 13.5, marginTop: 10, lineHeight: 1.5 }}>This is your whole property. Add a satellite screenshot — it'll fit fully on screen — then drop in your garden, orchard, greenhouse and berry areas and click any one to go inside.</p>
+            <p style={{ maxWidth: 360, fontSize: 13.5, marginTop: 10, lineHeight: 1.5 }}>This is your whole property. Tap <strong>Edit layout</strong> to add a satellite screenshot and drop in your garden, orchard, greenhouse and berry areas — then tap any one to go inside.</p>
           </div>)}>
         {data.sections.map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
           const count = k.uses === "beds" ? (s.beds || []).length : (s.plants || []).length;
+          const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
-            <div key={s.id} onPointerDown={(e) => drag.onPointerDown(e, s, "move")}
-              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, cursor: "move", background: hexA(k.color, .42), border: `2.5px solid ${k.color}`, borderRadius: 9, padding: 7, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
-                <Icon size={14} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+            <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
+              onClick={editMode ? undefined : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, cursor: editMode ? "move" : "pointer", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
+                <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
-                <span style={{ fontSize: 10.5, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count} {k.uses === "beds" ? "bed" + (count===1?"":"s") : "plant" + (count===1?"":"s")}</span>
-                <button onClick={(e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,.92)", color: k.color, border: "none", borderRadius: 6, padding: "3px 7px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Open <ArrowRight size={11} /></button>
-                <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: 2, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>
+                <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count} {k.uses === "beds" ? "bed" + (count===1?"":"s") : "plant" + (count===1?"":"s")}{dim ? ` · ${dim}` : ""}</span>
+                {editMode && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: 2, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>}
               </div>
             </div>
           ); })}
       </MapShell>
-      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Drag to position · drag the ⌟ corner to resize · click a section to enter it.</p>
+      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · drag the ⌟ corner to resize (the size in metres updates live). Tap “Done editing” when finished." : "Tap a section to go inside it. Tap “Edit layout” to move or add areas."}</p>
     </div>
   );
 }
@@ -680,12 +785,14 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [zoom, setZoom] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [hover, setHover] = useState(null);
+  const [pickQ, setPickQ] = useState("");
+  const [editMode, setEditMode] = useState(false);
   const k = SECTION_KINDS[section.kind];
   const usesBeds = k.uses === "beds";
   const north = section.north ?? data.north ?? 0;
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
-  const delSection = () => { if (confirm(`Delete "${section.name}" and everything in it?`)) { setData((d) => ({ ...d, sections: d.sections.filter((s) => s.id !== section.id) })); setNav({ level: "overview" }); } };
+  const delSection = () => { setData((d) => ({ ...d, sections: d.sections.filter((s) => s.id !== section.id) })); setNav({ level: "overview" }); setSel(null); };
 
   const patchItem = (id, p) => {
     if (usesBeds) patchSection({ beds: (section.beds || []).map((b) => b.id === id ? { ...b, ...p } : b) });
@@ -705,20 +812,36 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
   const pickList = section.kind === "berry" ? lib.berry : lib.fruit;
   const selPlant = sel?.kind === "marker" && sel.sectionId === section.id ? (section.plants || []).find((p) => p.id === sel.id) : null;
+  const sectionReal = realOf(section.w, section.h, data.dimM); // this area's real size, from its box on the property
 
   return (
     <div>
       <button onClick={() => { setNav({ level: "overview" }); setSel(null); }} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>
       <DateSlider data={data} viewDate={viewDate} setViewDate={setViewDate} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <input value={section.name} onChange={(e) => patchSection({ name: e.target.value })}
-          style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 160px" }} />
-        <label style={btn(C.soil)}><Upload size={14} /> {section.bg ? "Replace image" : "Add image"}<input type="file" accept="image/*" onChange={onUpload} style={{ display: "none" }} /></label>
-        {usesBeds ? <button onClick={addBed} style={btn(C.fern)}><Plus size={14} /> Add bed</button>
-                  : <button onClick={() => setPicker(!picker)} style={btn(k.color)}><Plus size={14} /> Add {section.kind === "berry" ? "bush/cane" : "tree"}</button>}
-        <button onClick={delSection} style={btnOutline(C.beet)}><Trash2 size={14} /></button>
+          style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 auto" }} />
       </div>
+      {sectionReal && <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}><Ruler size={13} color={C.fern} /> This area is <strong style={{ color: C.fernDk }}>{sectionReal.w}×{sectionReal.l}m</strong> — set on the property overview. Beds and trees below size against it.</div>}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => { setEditMode(!editMode); setPicker(false); }} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
+        {editMode && <>
+          {usesBeds ? <button onClick={addBed} style={btn(C.fern)}><Plus size={14} /> Add bed</button>
+                    : <button onClick={() => setPicker(!picker)} style={btn(k.color)}><Plus size={14} /> Add {section.kind === "berry" ? "bush/cane" : "tree"}</button>}
+          <ConfirmButton onConfirm={delSection} style={btnOutline(C.beet)} armedLabel="Delete area?"><Trash2 size={14} /> Delete</ConfirmButton>
+        </>}
+      </div>
+      {editMode && usesBeds && (section.beds || []).length > 0 && sectionReal && (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Bed sizes</strong>
+          <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>Type each bed's real size (or drag its corner on the map).</p>
+          {(section.beds || []).map((b) => (
+            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.ink, minWidth: 90, fontWeight: 600 }}>{b.name}</span>
+              <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />
+            </div>))}
+        </div>)}
 
       {/* tree/berry chooser */}
       {!usesBeds && picker && (
@@ -727,14 +850,20 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             <strong style={{ fontSize: 13.5, color: C.fernDk }}>Choose a {section.kind === "berry" ? "berry to plant" : "tree to plant"}</strong>
             <button onClick={() => setPicker(false)} style={iconBtn}><X size={16} /></button>
           </div>
-          <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {pickList.map((item) => (
+          <span style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "0 8px", background: C.panel2, marginBottom: 8 }}>
+            <Search size={13} color={C.muted} />
+            <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder={section.kind === "berry" ? "Search berries…" : "Search trees…"} style={{ border: "none", background: "transparent", outline: "none", padding: "6px 0", fontSize: 12.5, color: C.ink, fontFamily: "inherit", width: "100%" }} />
+            {pickQ && <button onClick={() => setPickQ("")} style={iconBtn}><X size={13} /></button>}
+          </span>
+          <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 7, maxHeight: 220, overflowY: "auto" }}>
+            {pickList.filter((item) => !pickQ.trim() || item.name.toLowerCase().includes(pickQ.trim().toLowerCase())).map((item) => (
               <button key={item.name} onClick={() => addPlant(item)} onMouseEnter={() => setHover(item)}
                 style={{ ...chip, cursor: "pointer", background: "#fff", border: `1px solid ${hexA(k.color, .6)}`, color: C.ink, padding: "7px 12px" }}>
                 {section.kind === "berry" ? <Cherry size={12} color={C.beet} style={{ marginRight: 4, verticalAlign: -1 }} /> : <TreeDeciduous size={12} color={C.soil} style={{ marginRight: 4, verticalAlign: -1 }} />}
                 {item.name}
               </button>))}
           </div>
+          <p style={{ fontSize: 11.5, color: C.muted, marginTop: 9, lineHeight: 1.5 }}>Tip: to plant a <strong>hedge</strong> (e.g. a feijoa hedge), add one plant, open it, and switch its shape to "Hedge" — then stretch it into a row instead of entering each tree.</p>
           {hover && <PlantQuickLook plant={hover} month={month} />}
         </div>)}
 
@@ -742,6 +871,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
         <button onClick={() => setShowSettings(!showSettings)} style={btnOutline(C.muted)}><Settings size={14} /> View settings</button>
         {showSettings && (
           <div style={{ ...card, padding: 12, marginTop: 8 }}>
+            {data.bg && !section.bg && <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>This view is a close-up of your property photo, cropped to where this area sits on the overview. Move or size it on the overview to change the crop.</p>}
             <ZoomBar zoom={zoom} setZoom={setZoom} />
             <NorthControl north={north} setNorth={(v) => patchSection({ north: v })} hemi={(data.place || DEFAULT_PLACE).hemisphere} />
           </div>)}
@@ -749,11 +879,12 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 360px", minWidth: 300 }}>
-          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} north={north} uploading={uploading} onBg={() => setSel(null)}
+          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} north={north} uploading={uploading} onBg={() => setSel(null)} gray={data.grayBg !== false}
+            crop={(!section.bg && data.bg) ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
             placeholder={!section.bg && (usesBeds ? (section.beds || []).length === 0 : (section.plants || []).length === 0) && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: C.muted, textAlign: "center", padding: 20 }}>
                 <k.icon size={28} color={k.color} />
-                <p style={{ maxWidth: 300, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>{usesBeds ? "Add beds and arrange them to match this part of the garden, then click a bed to lay out crops." : `Add ${section.kind === "berry" ? "bushes and canes" : "trees"} and drag them into place. Click one to log planting, feeding and pruning.`}</p>
+                <p style={{ maxWidth: 300, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>{usesBeds ? "Tap “Edit layout” to add beds and arrange them to match this part of the garden, then tap a bed to lay out crops." : `Tap “Edit layout” to add ${section.kind === "berry" ? "bushes, canes and hedges" : "trees and hedges"} and drag them into place. Tap one for its details, tasks and harvest.`}</p>
               </div>)}>
             {usesBeds && (section.beds || []).map((b) => {
               const cells = (b.cells || []).filter((c) => visibleAt(c, viewDate));
@@ -762,9 +893,12 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const fam = bedFamily(b, viewDate); const col = fam ? FAMILIES[fam].color : C.fern;
               const occ = new Set(cells.map((c) => `${c.r},${c.c}`)).size;
               const total = (b.cols || 4) * (b.rows || 3); const free = total - occ;
+              const dim = dimLabel(realOf(b.w, b.h, sectionReal));
               return (
-                <div key={b.id} onPointerDown={(e) => drag.onPointerDown(e, b, "move")}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, cursor: "move", background: hexA(col, .4), border: `2px solid ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2 }}>
+                <div key={b.id}
+                  onPointerDown={editMode ? (e) => drag.onPointerDown(e, b, "move") : undefined}
+                  onClick={editMode ? undefined : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, cursor: editMode ? "move" : "pointer", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span></div>
                   <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n]; const planned = (b.cells || []).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
@@ -774,33 +908,68 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}{pl > 1 ? ` ×${pl}` : ""}{planned ? " ⏳" : ""}</span>
                         </div>); }) : <div style={{ fontSize: 10, opacity: .9, textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>empty</div>}
                   </div>
-                  <div style={{ fontSize: 9.5, opacity: .95, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>
-                    {free}/{total} free{fam ? ` · ${GROUP_LABEL[rotationNextGroup(fam)]} next` : ""}
-                  </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                    <button onClick={(e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,.92)", color: col, border: "none", borderRadius: 6, padding: "2px 7px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Open <ArrowRight size={10} /></button>
-                    <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 12, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>⌟</span>
+                    <span style={{ fontSize: 9.5, opacity: .95, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {free}/{total} free{dim ? ` · ${dim}` : ""}{fam ? ` · ${GROUP_LABEL[rotationNextGroup(fam)]} next` : ""}
+                    </span>
+                    {editMode && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 12, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.6)", flexShrink: 0 }}>⌟</span>}
                   </div>
                 </div>); })}
 
             {!usesBeds && (section.plants || []).filter((p) => visibleAt(p, viewDate)).map((p) => { const on = selPlant?.id === p.id;
-              const isBush = p.icon === "bush" || p.icon === "cane"; const dia = p.dia ?? (isBush ? 8 : 12);
-              const canopy = lib.color(p.plant, null) || (isBush ? "#6E8B5A" : "#557249"); const ring = "rgba(0,0,0,.35)";
+              const canopy = lib.color(p.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
+              const select = editMode ? undefined : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
+              const down = editMode ? (e) => drag.onPointerDown(e, p, "move") : undefined;
+              if (p.shape === "hedge") {
+                const w = p.w ?? 30, h = p.h ?? 8;
+                return (
+                  <div key={p.id} onPointerDown={down} onClick={select}
+                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, cursor: editMode ? "move" : "pointer", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 8px" }}>{p.plant} hedge</span>
+                    {editMode && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, p, "resize")} style={{ position: "absolute", right: 2, bottom: 0, cursor: "nwse-resize", fontSize: 12, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>⌟</span>}
+                  </div>);
+              }
+              const isBush = p.icon === "bush" || p.icon === "cane";
+              const dia = p.dia ?? (isBush ? 8 : 12);
               return (
-                <div key={p.id} onPointerDown={(e) => drag.onPointerDown(e, p, "move")}
-                  onClick={(e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); }}
-                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: "move" }}>
+                <div key={p.id} onPointerDown={down} onClick={select}
+                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer" }}>
                   <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${on ? "#fff" : ring}`, boxShadow: on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
           </MapShell>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{usesBeds ? "Drag beds to arrange · click a bed to open its grid." : "Drag to position · click for details."}</p>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · drag the ⌟ corner to resize. Tap “Done” to lock the layout." : "Drag to move · drag the ⌟ corner of a hedge to resize. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
         </div>
 
-        {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
+        {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
       </div>
+    </div>
+  );
+}
+
+function ConfirmButton({ onConfirm, style, children, armedLabel = "Tap to confirm" }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 3000); return () => clearTimeout(t); }, [armed]);
+  return (
+    <button onClick={(e) => { e.stopPropagation(); if (armed) { setArmed(false); onConfirm(); } else setArmed(true); }}
+      style={armed ? { ...style, background: C.beet, color: "#fff", borderColor: C.beet } : style}>
+      {armed ? armedLabel : children}
+    </button>);
+}
+
+function SizeFields({ label, dim, onChange }) {
+  const w = dim?.w ?? "", l = dim?.l ?? "";
+  const set = (k, v) => onChange({ ...(dim || {}), [k]: v === "" ? undefined : Number(v) });
+  const area = (Number(w) > 0 && Number(l) > 0) ? (Number(w) * Number(l)).toFixed(1) : null;
+  const inp = { width: 70, boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 8px", fontSize: 13, background: C.panel2, fontFamily: "inherit", color: C.ink };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>
+      <Ruler size={14} color={C.fern} />
+      <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>{label}</span>
+      <input type="number" min="0" step="0.5" value={w} onChange={(e) => set("w", e.target.value)} placeholder="width" style={inp} />
+      <span style={{ color: C.muted }}>×</span>
+      <input type="number" min="0" step="0.5" value={l} onChange={(e) => set("l", e.target.value)} placeholder="length" style={inp} />
+      <span style={{ fontSize: 12, color: C.muted }}>m{area ? ` · ${area} m²` : ""}</span>
     </div>
   );
 }
@@ -845,10 +1014,14 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const [paint, setPaint] = useState(null); // a crop selected for filling cells
   const [showPalette, setShowPalette] = useState(false);
   const [hover, setHover] = useState(null);
+  const [palQ, setPalQ] = useState("");
   const greenhouse = section.kind === "greenhouse";
   const now = new Date();
 
   const patchBed = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, beds: s.beds.map((b) => b.id === bed.id ? { ...b, ...p } : b) }) }));
+  const sectionReal = realOf(section.w, section.h, data.dimM);
+  const bedReal = realOf(bed.w, bed.h, sectionReal);
+  const delBed = () => { setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, beds: (s.beds || []).filter((b) => b.id !== bed.id) }) })); setNav({ level: "section", sectionId: section.id, bedId: null }); setSel(null); };
 
   const cellAt = (r, c) => { const m = (bed.cells || []).filter((x) => x.r === r && x.c === c && visibleAt(x, viewDate));
     return m.length ? m.sort((a, b) => new Date(b.planted) - new Date(a.planted))[0] : null; };
@@ -926,6 +1099,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
         <input value={bed.name} onChange={(e) => patchBed({ name: e.target.value })}
           style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 140px" }} />
         {greenhouse && <span style={{ ...chip, background: hexA(C.sage, .25), color: C.fernDk, border: "none" }}>Greenhouse — start tender crops ~4–6 wks early</span>}
+        <ConfirmButton onConfirm={delBed} style={btnOutline(C.beet)} armedLabel="Delete bed?"><Trash2 size={14} /> Delete bed</ConfirmButton>
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -935,6 +1109,8 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
             <Stepper label="cols" value={cols} onChange={(dx) => resize("cols", dx)} />
             <Stepper label="rows" value={rows} onChange={(dx) => resize("rows", dx)} />
           </div>
+          {sectionReal ? <SizeFields label="Bed size" dim={bedReal} onChange={(real) => patchBed(boxFromReal(real, sectionReal))} />
+            : <SizeFields label="Bed size" dim={bed.dimM} onChange={(dimM) => patchBed({ dimM })} />}
 
           {/* palette */}
           <div style={{ marginBottom: 10 }}>
@@ -952,8 +1128,13 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
                 <div style={{ fontSize: 11.5, color: C.fernDk, marginBottom: 7, display: "flex", alignItems: "center", gap: 5 }}>
                   <RefreshCw size={12} color={C.fern} /> Rotation suggests <strong>{GROUP_LABEL[suggestGroup]}</strong> next — highlighted below.
                 </div>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "0 8px", background: "#fff", marginBottom: 8 }}>
+                  <Search size={13} color={C.muted} />
+                  <input value={palQ} onChange={(e) => setPalQ(e.target.value)} placeholder="Search crops…" style={{ border: "none", background: "transparent", outline: "none", padding: "6px 0", fontSize: 12.5, color: C.ink, fontFamily: "inherit", width: "100%" }} />
+                  {palQ && <button onClick={() => setPalQ("")} style={iconBtn}><X size={13} /></button>}
+                </span>
                 <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 150, overflowY: "auto" }}>
-                  {lib.veg.map((p) => { const picked = paint?.name === p.name; const sug = FAMILIES[p.fam]?.group === suggestGroup;
+                  {lib.veg.filter((p) => !palQ.trim() || p.name.toLowerCase().includes(palQ.trim().toLowerCase())).map((p) => { const picked = paint?.name === p.name; const sug = FAMILIES[p.fam]?.group === suggestGroup;
                     return (
                       <button key={p.name} onClick={() => setPaint(p)} onMouseEnter={() => setHover(p)}
                         style={{ ...chip, cursor: "pointer", position: "relative", background: picked ? p.color : sug ? hexA(C.fern, .12) : "#fff", color: picked ? "#fff" : C.ink, border: `${sug ? 2 : 1}px solid ${sug ? C.fern : hexA(p.color, .6)}`, fontWeight: sug ? 600 : 500 }}>
@@ -969,7 +1150,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           </div>
 
           {/* the grid */}
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gap: 4, background: C.soil, padding: 6, borderRadius: 10, aspectRatio: `${cols} / ${rows}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: 4, background: C.soil, padding: 6, borderRadius: 10, aspectRatio: bedReal ? `${bedReal.w} / ${bedReal.l}` : (bed.dimM?.w && bed.dimM?.l) ? `${bed.dimM.w} / ${bed.dimM.l}` : `${cols} / ${rows}` }}>
             {Array.from({ length: rows * cols }).map((_, i) => {
               const r = Math.floor(i / cols), c = i % cols; const cell = cellAt(r, c);
               const col = cell ? lib.color(cell.plant, cell.fam) : null;
@@ -1003,7 +1184,7 @@ function Stepper({ label, value, onChange }) {
 const stepBtn = { width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.line}`, background: C.panel2, cursor: "pointer", color: C.fern, fontSize: 15, lineHeight: 1, fontWeight: 700 };
 
 // ===================== detail panel ==============================
-function DetailPanel({ item, kind, patch, remove, close, display, extra, marker, planContext }) {
+function DetailPanel({ item, kind, patch, remove, close, display, extra, marker, planContext, secReal }) {
   const lib = useLib();
   const [showAll, setShowAll] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -1054,13 +1235,38 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
       <Field icon={Apple} label="Est. harvest"><span style={{ fontSize: 13, color: C.ink }}>{harvest}</span></Field>
 
       {marker && (
+        <Field icon={TreeDeciduous} label="Shape">
+          <select value={item.shape === "hedge" ? "hedge" : (item.icon || "tree")}
+            onChange={(e) => { const v = e.target.value;
+              if (v === "hedge") patch({ shape: "hedge", w: item.w ?? 30, h: item.h ?? 8 });
+              else patch({ shape: null, icon: v }); }}
+            style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 7px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
+            <option value="tree">Tree</option><option value="bush">Bush</option><option value="cane">Cane</option><option value="hedge">Hedge (row)</option>
+          </select>
+        </Field>
+      )}
+      {marker && item.shape !== "hedge" && (secReal?.w ? (
+        <Field icon={Ruler} label="Canopy ⌀ (m)">
+          <input type="number" min="0" step="0.5" value={Math.round((item.dia ?? 12) / 100 * secReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patch({ dia: clamp(m / secReal.w * 100, 2, 80) }); }} placeholder="e.g. 3"
+            style={{ width: 80, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 8px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+        </Field>
+      ) : (
         <Field icon={Ruler} label="Canopy ⌀">
           <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
             <input type="range" min={3} max={40} value={item.dia ?? 12} onChange={(e) => patch({ dia: Number(e.target.value) })} style={{ flex: 1, accentColor: C.fern }} />
             <span style={{ fontSize: 12, color: C.muted, minWidth: 30 }}>{item.dia ?? 12}%</span>
           </span>
         </Field>
-      )}
+      ))}
+      {marker && item.shape === "hedge" && (secReal?.w ? (
+        <Field icon={Ruler} label="Hedge size (m)">
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="number" min="0" step="0.5" value={Math.round((item.w ?? 30) / 100 * secReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patch({ w: clamp(m / secReal.w * 100, 2, 100) }); }} placeholder="length" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+            <span style={{ color: C.muted }}>×</span>
+            <input type="number" min="0" step="0.5" value={Math.round((item.h ?? 8) / 100 * secReal.l * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patch({ h: clamp(m / secReal.l * 100, 2, 100) }); }} placeholder="width" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+          </span>
+        </Field>
+      ) : <p style={{ fontSize: 11.5, color: C.muted, marginTop: 8 }}>This is a hedge row — in “Edit layout” drag it into place and stretch the ⌟ corner along your boundary. (Set the area's size for the hedge to scale in metres.)</p>)}
 
       {prune && <Field icon={Scissors} label="Pruning"><span style={{ fontSize: 13, color: C.ink, lineHeight: 1.4 }}>{prune}</span></Field>}
       {feed && <Field icon={Droplets} label="Feeding"><span style={{ fontSize: 13, color: C.ink, lineHeight: 1.4 }}>{feed}</span></Field>}
@@ -1083,6 +1289,29 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
                 <button key={p.name} onClick={() => planContext.onChoose(p)} style={{ ...chip, cursor: "pointer", background: "#fff", border: `1px solid ${hexA(p.color, .5)}`, color: C.ink }}>+ {p.name}</button>))}
             </div>)}
         </div>)}
+
+      {/* scheduled tasks for this plant */}
+      {(meta?.tasks || []).length > 0 && (() => {
+        const curMonth = new Date().getMonth() + 1; const curYM = todayISO().slice(0, 7);
+        const tasks = [...meta.tasks].sort((a, b) => (b.months?.includes(curMonth) ? 1 : 0) - (a.months?.includes(curMonth) ? 1 : 0));
+        const isDone = (t) => (item.doneTasks || []).includes(`${t.name}|${curYM}`);
+        const markDone = (t) => patch({ ferts: [...(item.ferts || []), { id: uid(), date: todayISO(), what: t.name }], doneTasks: [...(item.doneTasks || []), `${t.name}|${curYM}`] });
+        const undoDone = (t) => patch({ doneTasks: (item.doneTasks || []).filter((k) => k !== `${t.name}|${curYM}`), ferts: (item.ferts || []).filter((f) => !(f.what === t.name && (f.date || "").slice(0, 7) === curYM)) });
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>SEASONAL TASKS</div>
+            {tasks.map((t, i) => { const due = t.months?.includes(curMonth); const done = isDone(t);
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>
+                    <span style={{ color: done ? C.muted : C.ink, textDecoration: done ? "line-through" : "none" }}>{t.name}</span>
+                    <span style={{ fontSize: 11, color: due ? C.harvest : C.muted, marginLeft: 6 }}>{due ? "due now" : (t.months || []).map((m) => MONTHS[m-1]).join(", ")}</span>
+                  </span>
+                  {done ? <button onClick={() => undoDone(t)} style={{ ...chip, cursor: "pointer", background: hexA(C.sage, .25), color: C.fernDk, border: "none" }}><Check size={11} style={{ verticalAlign: -1 }} /> logged · undo</button>
+                        : <button onClick={() => markDone(t)} style={{ ...chip, cursor: "pointer", background: C.fern, color: "#fff", border: "none" }}>Log done</button>}
+                </div>); })}
+          </div>);
+      })()}
 
       {/* fertiliser log */}
       <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: C.muted }}>FEED / SPRAY LOG</div>
@@ -1139,30 +1368,45 @@ function bedFamily(bed, viewDate) {
 }
 
 // =========================== DO NOW ===============================
-function DoNowView({ data, month, hemi = "south", display }) {
+function DoNowView({ data, month, hemi = "south", display, setTab, setNav, setSel }) {
   const lib = useLib();
   const sowable = lib.veg.filter((v) => (v.sow || []).includes(month));
   const seasonName = seasonOf(month, hemi).toLowerCase();
   const winter = seasonOf(month, hemi) === "Winter";
   const today = new Date(); const tk = dayKey(today);
+  const nextMonth = (month % 12) + 1;
+  const soon = (months) => Array.isArray(months) && (months.includes(month) || months.includes(nextMonth));
+  const curYM = todayISO().slice(0, 7);
+  const taskDone = (it, t) => (it.doneTasks || []).includes(`${t.name}|${curYM}`);
+  const monthsLabel = (arr) => (arr || []).map((m) => MONTHS[m - 1]).join(", ");
+  const taskIcon = (name) => { const n = name.toLowerCase(); return n.includes("feed") ? Droplets : n.includes("prune") ? Scissors : n.includes("harvest") ? Cherry : n.includes("spray") || n.includes("net") || n.includes("frost") ? AlertTriangle : Check; };
+  const goTo = (go) => { if (!go || !setNav) return; setSel(null); setTab("map");
+    if (go.kind === "cell") { setNav({ level: "section", sectionId: go.sectionId, bedId: go.bedId }); setTimeout(() => setSel({ kind: "cell", sectionId: go.sectionId, bedId: go.bedId, id: go.cellId }), 0); }
+    else { setNav({ level: "section", sectionId: go.sectionId, bedId: null }); setTimeout(() => setSel({ kind: "marker", sectionId: go.sectionId, id: go.plantId }), 0); } };
 
   const harvests = [], planned = [], care = [];
+  const careSeen = new Set();
+  const addCare = (o) => { const key = `${o.what}|${o.where}`; if (careSeen.has(key)) return; careSeen.add(key); care.push(o); };
   data.sections.forEach((s) => {
     (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => {
-      if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)) });
+      const go = { kind: "cell", sectionId: s.id, bedId: b.id, cellId: c.id };
+      if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)), go });
       const meta = lib.vegByName(c.plant);
+      const active = c.planted && new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
       if (meta?.d && c.planted) {
         const hISO = addDays(c.planted, meta.d), hk = dayKey(new Date(hISO));
-        const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
-        if (active && hk <= tk + 45) harvests.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: hISO, dk: hk });
+        if (active && hk <= tk + 45) harvests.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: hISO, dk: hk, go });
       }
+      if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), go }); });
     }));
     (s.plants || []).forEach((p) => { const meta = lib.fruitByName(p.plant) || lib.berryByName(p.plant); if (!meta) return;
-      if (meta.prune && meta.prune.toLowerCase().includes(seasonName)) care.push({ icon: Scissors, what: `Prune ${p.plant}`, detail: meta.prune, where: s.name });
-      if (meta.feed && meta.feed.toLowerCase().includes(seasonName)) care.push({ icon: Droplets, what: `Feed ${p.plant}`, detail: meta.feed, where: s.name });
+      const go = { kind: "marker", sectionId: s.id, plantId: p.id };
+      (meta.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(p, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${p.plant}`, detail: monthsLabel(t.months), where: s.name, due: t.months.includes(month), go }); });
+      if (soon(meta.hmon)) addCare({ icon: Cherry, what: `Harvest ${p.plant}`, detail: meta.harvest || monthsLabel(meta.hmon), where: s.name, due: (meta.hmon || []).includes(month), go });
     });
   });
   harvests.sort((a, b) => a.dk - b.dk); planned.sort((a, b) => a.dk - b.dk);
+  care.sort((a, b) => (b.due ? 1 : 0) - (a.due ? 1 : 0));
 
   // beds with free cells right now → what (rotation-fit) you could sow there this month
   const openBeds = [];
@@ -1187,9 +1431,10 @@ function DoNowView({ data, month, hemi = "south", display }) {
       <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))" }}>
         <Panel title="Coming harvests" icon={Apple}>
           {harvests.length ? harvests.map((h, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "4px 0", borderBottom: i < harvests.length - 1 ? `1px solid ${C.line}` : "none" }}>
-              <strong style={{ fontSize: 13.5, flex: 1 }}>{h.plant}</strong>
+            <div key={i} onClick={() => goTo(h.go)} title="Open this plant" style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < harvests.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}>
+              <strong style={{ fontSize: 13.5, flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35) }}>{h.plant}</strong>
               <span style={{ fontSize: 11.5, color: h.dk <= tk ? C.harvest : C.muted, fontWeight: h.dk <= tk ? 600 : 400 }}>{h.dk <= tk ? "ready now" : `~${h.dk - tk} days`}</span>
+              <ArrowRight size={13} color={C.muted} />
             </div>
           )) : <p style={pMuted}>Nothing within six weeks. Plant something and its harvest date will show up here.</p>}
           {harvests.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{harvests.map((h) => h.where).filter((v, i, a) => a.indexOf(v) === i).slice(0,3).join(" · ")}</div>}
@@ -1197,20 +1442,21 @@ function DoNowView({ data, month, hemi = "south", display }) {
 
         <Panel title="Planned plantings" icon={CalendarDays}>
           {planned.length ? planned.map((p, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "4px 0", borderBottom: i < planned.length - 1 ? `1px solid ${C.line}` : "none" }}>
+            <div key={i} onClick={() => goTo(p.go)} title="Open this bed" style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < planned.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: C.harvest, flexShrink: 0 }} />
-              <strong style={{ fontSize: 13.5, flex: 1 }}>{p.plant}</strong>
+              <strong style={{ fontSize: 13.5, flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35) }}>{p.plant}</strong>
               <span style={{ fontSize: 11.5, color: C.muted }}>{fmtDate(p.date)}</span>
+              <ArrowRight size={13} color={C.muted} />
             </div>
           )) : <p style={pMuted}>None queued. Open a crop and use “Plan what's next” to line up its successor.</p>}
         </Panel>
 
-        <Panel title="Tree & berry care" icon={Scissors}>
+        <Panel title="Jobs due soon" icon={Scissors}>
           {care.length ? care.map((t, i) => { const Ic = t.icon; return (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Ic size={13} color={C.fern} /> {t.what}</div>
+            <div key={i} onClick={() => goTo(t.go)} title="Open this plant" style={{ marginBottom: 8, cursor: "pointer" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Ic size={13} color={t.due ? C.harvest : C.fern} /> <span style={{ flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35) }}>{t.what}</span>{t.due ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .18), color: C.harvest, border: "none" }}>now</span> : <span style={{ fontSize: 10.5, color: C.muted }}>soon</span>}<ArrowRight size={12} color={C.muted} /></div>
               <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{t.detail} · {t.where}</div>
-            </div>); }) : <p style={pMuted}>No pruning or feeding due this season for the trees you've placed.</p>}
+            </div>); }) : <p style={pMuted}>Nothing due this month or next for the plants you've placed. Tasks come from each plant's settings (the pencil in the Plant guide).</p>}
         </Panel>
 
         <Panel title="Sow & plant now" icon={Sprout}>
@@ -1401,26 +1647,32 @@ const SWATCHES = ["#6E8B5A","#4F7888","#B4503F","#C28F2E","#BC9A3E","#C2772E","#
 function PlantEditor({ type, plant, data, setData, close }) {
   const isNew = !plant;
   const [f, setF] = useState(() => isNew
-    ? { name: "", fam: "asteraceae", sow: [], spacing: 30, sun: "Full sun", d: 60, note: "", varieties: "", color: SWATCHES[0], group: "", plant: "", harvest: "", prune: "", feed: "", icon: "bush" }
-    : { name: plant.name, fam: plant.fam || "asteraceae", sow: plant.sow || [], spacing: plant.spacing || 30, sun: plant.sun || "Full sun", d: plant.d || 60, note: plant.note || "", varieties: plant.varieties || "", color: plant.color, group: plant.group || "", plant: plant.plant || "", harvest: plant.harvest || "", prune: plant.prune || "", feed: plant.feed || "", icon: plant.icon || "bush" });
+    ? { name: "", fam: "asteraceae", sow: [], spacing: 30, sun: "Full sun", d: 60, note: "", varieties: "", color: SWATCHES[0], group: "", plant: "", harvest: "", hmon: [], prune: "", feed: "", icon: "bush", tasks: [] }
+    : { name: plant.name, fam: plant.fam || "asteraceae", sow: plant.sow || [], spacing: plant.spacing || 30, sun: plant.sun || "Full sun", d: plant.d || 60, note: plant.note || "", varieties: plant.varieties || "", color: plant.color, group: plant.group || "", plant: plant.plant || "", harvest: plant.harvest || "", hmon: plant.hmon || [], prune: plant.prune || "", feed: plant.feed || "", icon: plant.icon || "bush", tasks: (plant.tasks || []).map((t) => ({ name: t.name, months: [...(t.months || [])] })) });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const toggleMonth = (m) => setF((s) => ({ ...s, sow: s.sow.includes(m) ? s.sow.filter((x) => x !== m) : [...s.sow, m].sort((a, b) => a - b) }));
+  const toggleH = (m) => setF((s) => ({ ...s, hmon: s.hmon.includes(m) ? s.hmon.filter((x) => x !== m) : [...s.hmon, m].sort((a, b) => a - b) }));
+  const addTask = () => setF((s) => ({ ...s, tasks: [...s.tasks, { name: "", months: [] }] }));
+  const removeTask = (i) => setF((s) => ({ ...s, tasks: s.tasks.filter((_, j) => j !== i) }));
+  const setTaskName = (i, v) => setF((s) => ({ ...s, tasks: s.tasks.map((t, j) => j === i ? { ...t, name: v } : t) }));
+  const toggleTaskMonth = (i, m) => setF((s) => ({ ...s, tasks: s.tasks.map((t, j) => j === i ? { ...t, months: t.months.includes(m) ? t.months.filter((x) => x !== m) : [...t.months, m].sort((a, b) => a - b) } : t) }));
   const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)));
   const shift = monthShiftFor(data.place);
   const toCanonical = (arr) => shiftMonths(arr, (12 - shift) % 12); // displayed (local) → stored (NZ canonical)
+  const cleanTasks = (arr) => arr.filter((t) => t.name.trim() && t.months.length).map((t) => ({ name: t.name.trim(), months: toCanonical(t.months) }));
 
   const save = () => {
     if (isNew && !f.name.trim()) { alert("Give it a name first."); return; }
     if (isNew) {
-      const base = { name: f.name.trim(), note: f.note, varieties: f.varieties, color: f.color, custom: true };
+      const base = { name: f.name.trim(), note: f.note, varieties: f.varieties, color: f.color, custom: true, tasks: cleanTasks(f.tasks) };
       const entry = type === "veg" ? { ...base, fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing) || 30, sun: f.sun, d: Number(f.d) || 60 }
-        : type === "fruit" ? { ...base, group: f.group || "Other", plant: f.plant, harvest: f.harvest, prune: f.prune, feed: f.feed }
-        : { ...base, icon: f.icon, plant: f.plant, harvest: f.harvest, prune: f.prune, feed: f.feed };
+        : type === "fruit" ? { ...base, group: f.group || "Other", plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed }
+        : { ...base, icon: f.icon, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed };
       setData((d) => ({ ...d, customPlants: { ...d.customPlants, [type]: [...(d.customPlants[type] || []), entry] } }));
     } else {
-      const e = type === "veg" ? clean({ fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing), sun: f.sun, d: Number(f.d), note: f.note, varieties: f.varieties, color: f.color })
-        : type === "fruit" ? clean({ group: f.group, plant: f.plant, harvest: f.harvest, prune: f.prune, feed: f.feed, note: f.note, varieties: f.varieties, color: f.color })
-        : clean({ icon: f.icon, plant: f.plant, harvest: f.harvest, prune: f.prune, feed: f.feed, note: f.note, varieties: f.varieties, color: f.color });
+      const e = type === "veg" ? clean({ fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing), sun: f.sun, d: Number(f.d), note: f.note, varieties: f.varieties, color: f.color, tasks: cleanTasks(f.tasks) })
+        : type === "fruit" ? clean({ group: f.group, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed, note: f.note, varieties: f.varieties, color: f.color, tasks: cleanTasks(f.tasks) })
+        : clean({ icon: f.icon, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed, note: f.note, varieties: f.varieties, color: f.color, tasks: cleanTasks(f.tasks) });
       setData((d) => ({ ...d, plantEdits: { ...d.plantEdits, [f.name]: { ...(d.plantEdits[f.name] || {}), ...e } } }));
     }
     close();
@@ -1484,6 +1736,11 @@ function PlantEditor({ type, plant, data, setData, close }) {
           <input value={f.plant} onChange={(e) => set("plant", e.target.value)} style={inp} placeholder="Winter, bare-root…" />
           <label style={lbl}>Harvest</label>
           <input value={f.harvest} onChange={(e) => set("harvest", e.target.value)} style={inp} placeholder="Feb–Apr…" />
+          <label style={lbl}>Harvest months (drives “Do now”)</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {MONTHS.map((m, i) => { const on = f.hmon.includes(i + 1); return (
+              <button key={m} onClick={() => toggleH(i + 1)} style={{ ...chip, cursor: "pointer", padding: "4px 9px", background: on ? f.color : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? f.color : C.line}` }}>{m}</button>); })}
+          </div>
           <label style={lbl}>Pruning</label>
           <input value={f.prune} onChange={(e) => set("prune", e.target.value)} style={inp} placeholder="When & how to prune" />
           <label style={lbl}>Feeding</label>
@@ -1494,6 +1751,21 @@ function PlantEditor({ type, plant, data, setData, close }) {
         <input value={f.varieties} onChange={(e) => set("varieties", e.target.value)} style={inp} placeholder="Favourite cultivars…" />
         <label style={lbl}>Notes / tips</label>
         <textarea value={f.note} onChange={(e) => set("note", e.target.value)} style={{ ...inp, minHeight: 56, resize: "vertical" }} />
+
+        <label style={lbl}>Scheduled tasks</label>
+        <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 7px", lineHeight: 1.5 }}>Jobs with the months they're due (prune, feed, spray, net…). These show up on the “Do now” page when they're due this month or next.</p>
+        {f.tasks.map((t, i) => (
+          <div key={i} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, marginBottom: 7, background: C.panel2 }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <input value={t.name} onChange={(e) => setTaskName(i, e.target.value)} placeholder="Task name (e.g. Winter prune)" style={{ ...inp, padding: "5px 8px" }} />
+              <button onClick={() => removeTask(i)} style={iconBtn}><Trash2 size={14} /></button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+              {MONTHS.map((m, j) => { const on = t.months.includes(j + 1); return (
+                <button key={m} onClick={() => toggleTaskMonth(i, j + 1)} style={{ ...chip, cursor: "pointer", padding: "3px 7px", fontSize: 11, background: on ? C.fern : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{m}</button>); })}
+            </div>
+          </div>))}
+        <button onClick={addTask} style={btnOutline(C.fern)}><Plus size={14} /> Add a task</button>
 
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           <button onClick={save} style={{ ...btn(C.fern), flex: 1, justifyContent: "center" }}><Check size={15} /> {isNew ? "Add to guide" : "Save changes"}</button>
@@ -1641,33 +1913,48 @@ function ReportView({ data, month, hemi, display }) {
   const lib = useLib();
   const today = new Date(); const tk = dayKey(today);
   const season = seasonOf(month, hemi);
+  const nextMonth = (month % 12) + 1;
+  const curYM = todayISO().slice(0, 7);
+  const monthsLabel = (arr) => (arr || []).map((m) => MONTHS[m - 1]).join(", ");
   const OPTIONS = [
-    ["glance", "Garden at a glance"], ["growing", "What's growing now"], ["harvests", "Upcoming harvests"],
+    ["glance", "Garden at a glance"], ["growing", "What's growing now"], ["jobs", "Jobs due"], ["harvests", "Upcoming harvests"],
     ["planned", "Planned plantings"], ["rotation", "Crop rotation status"], ["care", "Tree & berry care"], ["log", "Feed / spray log"],
   ];
   const [on, setOn] = useState(() => Object.fromEntries(OPTIONS.map(([k]) => [k, true])));
   const toggle = (k) => setOn((s) => ({ ...s, [k]: !s[k] }));
+  const HORIZONS = [["1 week", 7], ["1 month", 31], ["3 months", 92], ["Everything", 99999]];
+  const [hzn, setHzn] = useState(31);
+  const limitK = tk + hzn;
+  const hznLabel = (HORIZONS.find(([, d]) => d === hzn) || [])[0] || "";
+  const wideHorizon = hzn > 60; // include next month's tasks for longer horizons
 
   // gather
   const bedSecs = data.sections.filter((s) => SECTION_KINDS[s.kind].uses === "beds");
   const plantSecs = data.sections.filter((s) => SECTION_KINDS[s.kind].uses === "plants");
-  const harvests = [], planned = [], care = [], log = [];
+  const harvests = [], planned = [], care = [], log = [], jobs = [];
+  const jobSeen = new Set();
+  const addJob = (o) => { const key = `${o.what}|${o.where}`; if (jobSeen.has(key)) return; jobSeen.add(key); jobs.push(o); };
+  const dueSoon = (months) => Array.isArray(months) && (months.includes(month) || (wideHorizon && months.includes(nextMonth)));
   data.sections.forEach((s) => {
     (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => {
       if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)) });
       const meta = lib.vegByName(c.plant);
+      const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
       if (meta?.d && c.planted) { const hISO = addDays(c.planted, meta.d), hk = dayKey(new Date(hISO));
-        const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
-        if (active && hk <= tk + 90) harvests.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: hISO, dk: hk }); }
+        if (active && hk <= tk + 400) harvests.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: hISO, dk: hk }); }
+      if (active) (meta?.tasks || []).forEach((t) => { if (dueSoon(t.months) && !(c.doneTasks || []).includes(`${t.name}|${curYM}`)) addJob({ what: `${t.name} — ${c.plant}`, where: `${b.name} · ${s.name}`, detail: monthsLabel(t.months) }); });
       (c.ferts || []).forEach((f) => log.push({ ...f, plant: c.plant, where: `${b.name} · ${s.name}`, dk: dayKey(new Date(f.date)) }));
     }));
     (s.plants || []).forEach((p) => { const meta = lib.fruitByName(p.plant) || lib.berryByName(p.plant);
       if (meta) { if (meta.prune && meta.prune.toLowerCase().includes(season.toLowerCase())) care.push({ what: `Prune ${p.plant}`, detail: meta.prune, where: s.name });
-        if (meta.feed && meta.feed.toLowerCase().includes(season.toLowerCase())) care.push({ what: `Feed ${p.plant}`, detail: meta.feed, where: s.name }); }
+        if (meta.feed && meta.feed.toLowerCase().includes(season.toLowerCase())) care.push({ what: `Feed ${p.plant}`, detail: meta.feed, where: s.name });
+        (meta.tasks || []).forEach((t) => { if (dueSoon(t.months) && !(p.doneTasks || []).includes(`${t.name}|${curYM}`)) addJob({ what: `${t.name} — ${p.plant}`, where: s.name, detail: monthsLabel(t.months) }); }); }
       (p.ferts || []).forEach((f) => log.push({ ...f, plant: p.plant, where: s.name, dk: dayKey(new Date(f.date)) }));
     });
   });
   harvests.sort((a, b) => a.dk - b.dk); planned.sort((a, b) => a.dk - b.dk); log.sort((a, b) => b.dk - a.dk);
+  const harvestsIn = harvests.filter((h) => h.dk <= limitK);
+  const plannedIn = planned.filter((p) => p.dk <= limitK);
 
   const totalBeds = bedSecs.reduce((n, s) => n + (s.beds || []).length, 0);
   const totalPlants = plantSecs.reduce((n, s) => n + (s.plants || []).length, 0);
@@ -1681,7 +1968,12 @@ function ReportView({ data, month, hemi, display }) {
         <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Garden report</h2>
         <button onClick={() => window.print()} style={btn(C.soil)}><Printer size={15} /> Print / Save PDF</button>
       </div>
-      <p style={{ color: C.muted, fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>Tick what to include, then print or save as PDF.</p>
+      <p style={{ color: C.muted, fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>Tick what to include, choose a time window, then print or save as PDF.</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 10 }} className="report-toggles">
+        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Looking ahead:</span>
+        {HORIZONS.map(([label, d]) => (
+          <button key={d} onClick={() => setHzn(d)} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: hzn === d ? C.soil : C.panel2, color: hzn === d ? "#fff" : C.muted, border: `1px solid ${hzn === d ? C.soil : C.line}` }}>{label}</button>))}
+      </div>
       <div className="report-toggles" style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
         {OPTIONS.map(([k, label]) => (
           <button key={k} onClick={() => toggle(k)} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: on[k] ? C.fern : C.panel2, color: on[k] ? "#fff" : C.muted, border: `1px solid ${on[k] ? C.fern : C.line}` }}>
@@ -1691,7 +1983,7 @@ function ReportView({ data, month, hemi, display }) {
 
       <div style={{ ...card, background: "#fff" }}>
         <div style={{ fontFamily: display, fontSize: 21, fontWeight: 600, color: C.fernDk }}>{data.propertyName}</div>
-        <div style={{ fontSize: 12.5, color: C.muted }}>{data.place?.name}{data.place?.region ? `, ${data.place.region}` : ""} · {season} · {fmtDate(today.toISOString().slice(0,10))}</div>
+        <div style={{ fontSize: 12.5, color: C.muted }}>{data.place?.name}{data.place?.region ? `, ${data.place.region}` : ""} · {season} · {fmtDate(today.toISOString().slice(0,10))} · next {hznLabel.toLowerCase()}</div>
 
         {on.glance && <><H>Garden at a glance</H>
           <div style={row}>{data.sections.length} section{data.sections.length === 1 ? "" : "s"} · {totalBeds} vegetable bed{totalBeds === 1 ? "" : "s"} · {totalPlants} tree{totalPlants === 1 ? "" : "s"} & bushes</div>
@@ -1707,12 +1999,16 @@ function ReportView({ data, month, hemi, display }) {
           {plantSecs.map((s) => (s.plants || []).length ? <div key={s.id} style={row}>• <strong>{s.name}</strong>: {[...new Set((s.plants || []).map((p) => p.plant))].join(", ")}</div> : null)}
         </>}
 
-        {on.harvests && <><H>Upcoming harvests (next 90 days)</H>
-          {harvests.length ? harvests.map((h, i) => <div key={i} style={row}>• <strong>{h.plant}</strong> — {h.dk <= tk ? "ready now" : `~${h.dk - tk} days (${fmtDate(h.date)})`} · {h.where}</div>) : <div style={{ ...row, color: C.muted }}>None estimated in the next 90 days.</div>}
+        {on.jobs && <><H>Jobs due {wideHorizon ? "(this & next month)" : "this month"}</H>
+          {jobs.length ? jobs.map((t, i) => <div key={i} style={row}>• <strong>{t.what}</strong> ({t.where}){t.detail ? ` — ${t.detail}` : ""}</div>) : <div style={{ ...row, color: C.muted }}>No scheduled tasks due — anything logged this month is hidden.</div>}
         </>}
 
-        {on.planned && <><H>Planned plantings</H>
-          {planned.length ? planned.map((p, i) => <div key={i} style={row}>• <strong>{p.plant}</strong> — {fmtDate(p.date)} · {p.where}</div>) : <div style={{ ...row, color: C.muted }}>None queued.</div>}
+        {on.harvests && <><H>Upcoming harvests (next {hznLabel.toLowerCase()})</H>
+          {harvestsIn.length ? harvestsIn.map((h, i) => <div key={i} style={row}>• <strong>{h.plant}</strong> — {h.dk <= tk ? "ready now" : `~${h.dk - tk} days (${fmtDate(h.date)})`} · {h.where}</div>) : <div style={{ ...row, color: C.muted }}>None estimated in this window.</div>}
+        </>}
+
+        {on.planned && <><H>Planned plantings (next {hznLabel.toLowerCase()})</H>
+          {plannedIn.length ? plannedIn.map((p, i) => <div key={i} style={row}>• <strong>{p.plant}</strong> — {fmtDate(p.date)} · {p.where}</div>) : <div style={{ ...row, color: C.muted }}>None queued in this window.</div>}
         </>}
 
         {on.rotation && <><H>Crop rotation status</H>
