@@ -221,7 +221,7 @@ const SECTION_KINDS = {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 46";
+const APP_BUILD = "2026-06-25 · build 47";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1191,6 +1191,14 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               {sectionReal && <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />}
               <RotateField rot={b.rot} onChange={(rot) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, rot } : x) })} />
               <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
+              {(() => { const br = realOf(b.w, b.h, sectionReal); if (!br) return null;
+                const curSq = b.sq || 0.25; const other = curSq === 0.25 ? 0.5 : 0.25; const ng = bedFineGrid({ ...b, sq: curSq }, br);
+                return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 11.5, color: C.muted }}>{curSq} m sq ({ng.gw}×{ng.gh})</span>
+                  <ConfirmButton onConfirm={() => { const n = bedFineGrid({ ...b, sq: other }, br); const og = b.grid || { w: ng.gw, h: ng.gh };
+                      patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, plantings: regridBed({ ...x, plantings: bedPlantings(x) }, og, n.gw, n.gh), grid: { w: n.gw, h: n.gh }, sq: other } : x) }); }}
+                    style={{ ...btnOutline(C.fern), padding: "5px 9px", fontSize: 12 }} armedLabel={`Re-grid to ${other} m? (regroups plantings)`}>→ {other} m</ConfirmButton>
+                </span>); })()}
               <ConfirmButton onConfirm={() => patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) })} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
             </div>); })}
         </div>)}
@@ -1527,12 +1535,6 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           </div>
           {byStage && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             {["seed", "seedling", "growing", "ready"].map((k) => <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.muted }}><span style={{ width: 11, height: 11, borderRadius: 3, background: STAGE[k].color }} />{STAGE[k].label}</span>)}
-          </div>}
-          {bedReal && <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: C.muted }}>Square size:</span>
-            {[[0.25, "0.25 m"], [0.5, "0.5 m"]].map(([v, lab]) => { const cur = (bed.sq || 0.25) === v; return (
-              <button key={v} onClick={() => setSquareSize(v)} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
-            <span style={{ fontSize: 11, color: C.muted }}>{grid.gw}×{grid.gh} squares</span>
           </div>}
 
           {/* select toggle + action bar */}
