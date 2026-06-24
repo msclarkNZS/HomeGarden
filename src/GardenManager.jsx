@@ -258,6 +258,7 @@ const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], pl
 
 function normalize(d) {
   if (!d) return blank;
+  let base;
   // migrate v1 (flat beds) into a single garden section
   if (d.beds && !d.sections) {
     const beds = d.beds.map((b) => ({
@@ -268,11 +269,21 @@ function normalize(d) {
         planted: todayISO(), removed: null, ferts: [], notes: "",
       })),
     }));
-    return { ...blank, propertyName: d.propertyName || blank.propertyName,
+    base = { ...blank, propertyName: d.propertyName || blank.propertyName,
       sections: [{ id: uid(), name: "Main garden", kind: "garden", x: 30, y: 30, w: 40, h: 35, bg: d.bg || null, beds, plants: [] }] };
+  } else {
+    base = { ...blank, ...d, sections: (d.sections || []).map((s) => ({ ...s, beds: s.beds || [], plants: s.plants || [] })), place: d.place || DEFAULT_PLACE,
+      customPlants: { veg: [], fruit: [], berry: [], ...(d.customPlants || {}) }, plantEdits: d.plantEdits || {}, harvests: d.harvests || [] };
   }
-  return { ...blank, ...d, sections: (d.sections || []).map((s) => ({ ...s, beds: s.beds || [], plants: s.plants || [] })), place: d.place || DEFAULT_PLACE,
-    customPlants: { veg: [], fruit: [], berry: [], ...(d.customPlants || {}) }, plantEdits: d.plantEdits || {}, harvests: d.harvests || [] };
+  // migrate each bed from one-crop-per-cell into grouped plantings on a 0.25 m grid
+  base.sections = base.sections.map((s) => { const sr = realOf(s.w, s.h, base.dimM);
+    return { ...s, beds: (s.beds || []).map((b) => {
+      if (b.plantings) return b;
+      const grid = bedFineGrid(b, realOf(b.w, b.h, sr));
+      return { ...b, plantings: cellsToPlantings(b, grid), grid: { w: grid.gw, h: grid.gh }, sq: grid.sq };
+    }) };
+  });
+  return base;
 }
 
 async function loadData() {
@@ -332,7 +343,7 @@ function cropHarvestStats(data, name) {
     if (hs.length && plantedISO) { const firstISO = hs.map((h) => h.date).sort()[0]; const d = Math.round((new Date(firstISO) - new Date(plantedISO)) / 86400000); if (d >= 0) firsts.push(d); }
   };
   (data.sections || []).forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => { if (c.plant === name) visit(c, c.planted); }));
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => { if (c.plant === name) visit(c, c.planted); }));
     (s.plants || []).forEach((p) => { if (p.plant === name) visit(p, p.planted); });
   });
   (data.harvests || []).filter((h) => h.plant === name).forEach(addEntry);
@@ -345,7 +356,7 @@ function cropHarvestStats(data, name) {
 function allHarvests(data, name) {
   const out = [];
   (data.sections || []).forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => { if (c.plant === name) (c.ferts || []).filter((f) => f.type === "harvest").forEach((f) => out.push({ ...f, where: `${b.name} · ${s.name}` })); }));
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => { if (c.plant === name) (c.ferts || []).filter((f) => f.type === "harvest").forEach((f) => out.push({ ...f, where: `${b.name} · ${s.name}` })); }));
     (s.plants || []).forEach((p) => { if (p.plant === name) (p.ferts || []).filter((f) => f.type === "harvest").forEach((f) => out.push({ ...f, where: s.name })); });
   });
   (data.harvests || []).filter((h) => h.plant === name).forEach((h) => { const sn = h.section ? (data.sections || []).find((s) => s.id === h.section)?.name : null; out.push({ ...h, where: sn ? `mixed · ${sn}` : "mixed / any bed" }); });
@@ -356,7 +367,7 @@ function allHarvests(data, name) {
 function harvestedCrops(data) {
   const set = new Set();
   (data.sections || []).forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => { if ((c.ferts || []).some((f) => f.type === "harvest")) set.add(c.plant); }));
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => { if ((c.ferts || []).some((f) => f.type === "harvest")) set.add(c.plant); }));
     (s.plants || []).forEach((p) => { if ((p.ferts || []).some((f) => f.type === "harvest")) set.add(p.plant); });
   });
   (data.harvests || []).forEach((h) => set.add(h.plant));
@@ -479,7 +490,7 @@ function NorthControl({ north, setNorth, hemi = "south" }) {
   );
 }
 
-function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, north, hemi, onBg, uploading, placeholder, crop, gray, children }) {
+function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, north, hemi, onBg, uploading, placeholder, crop, gray, editMode = false, children }) {
   // crop = { bg, ar, region:{x,y,w,h} } shows a sub-rectangle of a parent image
   let bgStyle, aspect = bg && bgAR ? `${bgAR}` : defaultAR;
   const hasImg = !!(crop && crop.bg && crop.region) || !!bg;
@@ -496,7 +507,7 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, nor
   return (
     <div style={{ position: "relative", width: "100%", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
       <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
-        style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: "none" }}>
+        style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: editMode ? "none" : "auto" }}>
         {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
         {placeholder}
         {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
@@ -793,15 +804,15 @@ function useDrag(containerRef, applyPatch) {
 function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
   const days = [];
   data.sections.forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => { if (c.planted) days.push(dayKey(new Date(c.planted))); if (c.removed) days.push(dayKey(new Date(c.removed))); }));
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => { if (c.planted) days.push(dayKey(new Date(c.planted))); if (c.removed) days.push(dayKey(new Date(c.removed))); }));
     (s.plants || []).forEach((p) => p.planted && days.push(dayKey(new Date(p.planted))));
   });
   const today = dayKey(new Date());
   const all = days.concat(markers.map((m) => m.day));
   const earliest = all.length ? Math.min(...all) : today;
   const latest = all.length ? Math.max(...all) : today;
-  const min = Math.max(today - 540, Math.min(today - 90, earliest));
-  const max = Math.min(today + 540, Math.max(today + 120, latest));
+  const min = Math.max(today - 300, Math.min(today - 60, earliest));
+  const max = Math.min(today + 730, Math.max(today + 200, latest));
   const cur = clamp(dayKey(viewDate), min, max);
   const isToday = dayKey(viewDate) === today;
   const pos = (d) => ((clamp(d, min, max) - min) / (max - min || 1)) * 100;
@@ -841,7 +852,7 @@ const STAGE = {
   seed:     { label: "Just sown",     color: "#B08C63" },
   seedling: { label: "Seedling",      color: "#9FC18C" },
   growing:  { label: "Growing",       color: "#5E8A5A" },
-  ready:    { label: "Ready to pick", color: C.harvest },
+  ready:    { label: "Ready to pick", color: "#F2A23A" },
   done:     { label: "Past / spent",  color: "#9A9486" },
 };
 function cropStage(cell, meta, viewDate) {
@@ -981,7 +992,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
             </div>); })}
         </div>)}
 
-      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false}
+      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} editMode={editMode}
         placeholder={!data.bg && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
             <div style={{ background: "rgba(245,243,234,.94)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "18px 20px", maxWidth: 380, boxShadow: "0 4px 16px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", alignItems: "center", color: C.ink }}>
@@ -1079,29 +1090,28 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
         </div>)}
       {logH && (() => {
         const grown = [...new Set([
-          ...(section.beds || []).flatMap((b) => (b.cells || []).map((c) => c.plant)),
+          ...(section.beds || []).flatMap((b) => bedPlantings(b).map((p) => p.plant)),
           ...(section.plants || []).map((p) => p.plant),
         ].filter(Boolean))].sort();
         const crop = hCrop || grown[0] || "";
-        // plantings of this crop in this area (a bed-worth, or a single tree/bush)
+        // plantings of this crop in this area (a bed group, or a single tree/bush)
         const groups = [];
-        if (usesBeds) (section.beds || []).forEach((b) => { const cells = (b.cells || []).filter((c) => c.plant === crop && !c.removed); if (cells.length) {
-          const rep = cells.slice().sort((a, c) => (a.planted || "").localeCompare(c.planted || ""))[0];
-          groups.push({ key: b.id, label: b.name, sub: cells.length > 1 ? `${cells.length} plants` : "1 plant", planted: rep.planted, bedId: b.id, cellIds: cells.map((c) => c.id) }); } });
+        if (usesBeds) (section.beds || []).forEach((b) => { bedPlantings(b).forEach((p) => { if (p.plant === crop && !plantingRemoved(p)) {
+          groups.push({ key: p.id, label: b.name + (p.variety ? ` · ${p.variety}` : ""), sub: `${(p.cells || []).length} sq`, planted: p.planted, bedId: b.id, plantingId: p.id }); } }); });
         else { const same = (section.plants || []).filter((p) => p.plant === crop); same.forEach((p, i) => groups.push({ key: p.id, label: same.length > 1 ? `${p.plant} #${i + 1}` : p.plant, sub: "", planted: p.planted, markerId: p.id })); }
         const isSel = (g) => hSel[g.key] !== false;
         const chosen = groups.filter(isSel);
-        const plantCount = chosen.reduce((n, g) => n + (g.cellIds ? g.cellIds.length : 1), 0);
+        const plantCount = chosen.length;
         const total = hQty === "" ? null : Number(hQty);
         const share = total != null && plantCount ? Math.round((total / plantCount) * 100) / 100 : null;
         const doLog = () => { if (!crop) return; if (hQty === "" && !hNote.trim()) return;
           if (!chosen.length) { // no specific plantings → record one mixed entry against the crop
             setData((d) => ({ ...d, harvests: [...(d.harvests || []), { id: uid(), date: hDate, plant: crop, qty: total, unit: hUnit, what: hNote.trim() || undefined, section: section.id }] }));
           } else { const entry = () => ({ id: uid(), date: hDate, type: "harvest", qty: share, unit: hUnit, what: hNote.trim() || undefined });
-            const bedCellSet = {}; chosen.forEach((g) => { if (g.cellIds) bedCellSet[g.bedId] = new Set(g.cellIds); });
+            const plantingSet = new Set(chosen.filter((g) => g.plantingId).map((g) => g.plantingId));
             const markerSet = new Set(chosen.filter((g) => g.markerId).map((g) => g.markerId));
             setData((d) => ({ ...d, sections: d.sections.map((s) => { if (s.id !== section.id) return s;
-              if (usesBeds) return { ...s, beds: (s.beds || []).map((b) => { const set = bedCellSet[b.id]; if (!set) return b; return { ...b, cells: (b.cells || []).map((c) => set.has(c.id) ? { ...c, ferts: [...(c.ferts || []), entry()] } : c) }; }) };
+              if (usesBeds) return { ...s, beds: (s.beds || []).map((b) => ({ ...b, plantings: (b.plantings || []).map((p) => plantingSet.has(p.id) ? { ...p, ferts: [...(p.ferts || []), entry()] } : p) })) };
               return { ...s, plants: (s.plants || []).map((p) => markerSet.has(p.id) ? { ...p, ferts: [...(p.ferts || []), entry()] } : p) }; }) }));
           }
           setHQty(""); setHNote(""); };
@@ -1142,7 +1152,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
           <strong style={{ fontSize: 13.5, color: C.fernDk }}>Bed sizes &amp; angle</strong>
           <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>{sectionReal ? "Type each bed's real size (or drag its corner), and rotate any bed that runs at an angle." : "Rotate any bed that runs at an angle. Set the property & area sizes to size beds in metres too."}</p>
-          {(section.beds || []).map((b) => { const cnt = (b.cells || []).filter((c) => !c.removed).length; const note = cnt ? `${cnt} planting${cnt === 1 ? "" : "s"}` : "empty";
+          {(section.beds || []).map((b) => { const cnt = bedPlantings(b).map(plantingAsCell).filter((c) => !c.removed).length; const note = cnt ? `${cnt} planting${cnt === 1 ? "" : "s"}` : "empty";
             return (
             <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12.5, color: C.ink, minWidth: 90, fontWeight: 600 }}>{b.name}</span>
@@ -1215,7 +1225,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 320px", minWidth: 280, maxWidth: mapW }}>
-          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={1} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false}
+          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={1} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false} editMode={editMode}
             crop={(!section.bg && data.bg) ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
             placeholder={!section.bg && (usesBeds ? (section.beds || []).length === 0 : (section.plants || []).length === 0) && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 20 }}>
@@ -1225,7 +1235,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                 </div>
               </div>)}>
             {usesBeds && (section.beds || []).map((b) => {
-              const cells = (b.cells || []).filter((c) => visibleAt(c, viewDate));
+              const cells = bedPlantings(b).map(plantingAsCell).filter((c) => visibleAt(c, viewDate));
               const counts = {}; cells.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; });
               const names = Object.keys(counts);
               const fam = bedFamily(b, viewDate); const col = fam ? FAMILIES[fam].color : C.fern;
@@ -1239,7 +1249,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span></div>
                   <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
-                    {names.length ? names.map((n) => { const pl = counts[n]; const planned = (b.cells || []).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
+                    {names.length ? names.map((n) => { const pl = counts[n]; const planned = bedPlantings(b).map(plantingAsCell).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
                       return (
                         <div key={n} style={{ fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, textShadow: "0 1px 2px rgba(0,0,0,.7)", lineHeight: 1.2 }}>
                           <span style={{ width: 7, height: 7, borderRadius: 2, background: lib.color(n, null), flexShrink: 0, boxShadow: "0 0 0 1px rgba(255,255,255,.5)" }} />
@@ -1366,13 +1376,16 @@ function PlantGlyph({ icon }) {
 // ===================== bed grid (split crops) =====================
 function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, setViewDate, display, month }) {
   const lib = useLib();
-  const [paint, setPaint] = useState(null); // a crop selected for filling cells
-  const [showPalette, setShowPalette] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [hover, setHover] = useState(null);
+  const [selMode, setSelMode] = useState(false);
+  const [selSet, setSelSet] = useState(() => new Set());
+  const [picker, setPicker] = useState(null); // null | "plant" | "plannext"
   const [palQ, setPalQ] = useState("");
+  const [hover, setHover] = useState(null);
   const greenhouse = section.kind === "greenhouse";
   const now = new Date();
+  const V = viewDate.toISOString().slice(0, 10);
+  const gridRef = useRef(null);
+  const paintRef = useRef(null);
 
   const patchBed = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, beds: s.beds.map((b) => b.id === bed.id ? { ...b, ...p } : b) }) }));
   const sectionReal = realOf(section.w, section.h, data.dimM);
@@ -1380,71 +1393,69 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const mapW = MAP_W[bed.mapSize || section.mapSize || data.mapSize] || MAP_W.medium;
   const byStage = data.colourBy === "stage";
 
-  const cellAt = (r, c) => { const m = (bed.cells || []).filter((x) => x.r === r && x.c === c && visibleAt(x, viewDate));
-    return m.length ? m.sort((a, b) => new Date(b.planted) - new Date(a.planted))[0] : null; };
-  const setCell = (r, c) => {
-    if (paint) {
-      const V = viewDate.toISOString().slice(0, 10);
-      const vis = cellAt(r, c); // crop visible at the viewed date
-      if (vis && vis.planted === V) {
-        patchBed({ cells: bed.cells.map((x) => x.id === vis.id ? { ...x, plant: paint.name, fam: paint.fam } : x) });
-      } else if (vis) {
-        // start the new crop from the viewed date as a successor; the current crop stays until you clear it
-        const nw = { id: uid(), r, c, plant: paint.name, fam: paint.fam, planted: V, removed: null, ferts: [], notes: "", prevId: vis.id };
-        patchBed({ cells: [...(bed.cells || []), nw] });
-      } else {
-        const nw = { id: uid(), r, c, plant: paint.name, fam: paint.fam, planted: V, removed: null, ferts: [], notes: "" };
-        patchBed({ cells: [...(bed.cells || []), nw] });
-      }
-      return;
-    }
-    const ex = cellAt(r, c);
-    if (ex) setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: ex.id });
-    else setShowPalette(true); // open the chooser, rotation picks highlighted
-  };
-  // removing a cell; if it was a planned successor, let its predecessor run on again
-  const removeCell = (cell) => {
-    let cells = bed.cells.filter((x) => x.id !== cell.id);
-    if (cell.prevId) cells = cells.map((x) => x.id === cell.prevId ? { ...x, removed: cell.prevRemoved ?? null } : x);
-    patchBed({ cells });
-    if (cell.prevId) setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: cell.prevId });
-    else setSel(null);
-  };
-  const resize = (key, delta) => patchBed({ [key]: clamp((bed[key] || 1) + delta, 1, 10) });
+  // fine grid + plantings (migrate-on-open if a bed somehow still lacks them)
+  const grid = bed.grid ? { gw: bed.grid.w, gh: bed.grid.h, sq: bed.sq || 0.25, metres: true } : bedFineGrid(bed, bedReal);
+  const plantings = bed.plantings || cellsToPlantings(bed, grid);
+  useEffect(() => { if (!bed.plantings) { const g = bedFineGrid(bed, bedReal); patchBed({ plantings: cellsToPlantings(bed, g), grid: { w: g.gw, h: g.gh }, sq: g.sq }); } }, [bed.id]);
 
-  const nextGroupAfter = (famKey) => { const g = famKey ? FAMILIES[famKey]?.group : null;
-    return (!g || g === "flexible") ? "legume" : ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(g) + 1) % ROTATION_SEQUENCE.length]; };
-  const suggestGroup = nextGroupAfter(bedFamily(bed, viewDate));
+  const commit = (next) => patchBed({ plantings: next });
+  const owners = squareOwners(plantings, grid, viewDate);
+  const keyOf = (x, y) => y * grid.gw + x;
+  const xyOf = (k) => ({ x: k % grid.gw, y: Math.floor(k / grid.gw) });
 
-  // queue a successor crop starting at this crop's estimated harvest date (the current crop is NOT cleared — that happens when you actually pull it)
-  const planNext = (cell, crop) => {
-    const meta = lib.vegByName(cell.plant);
-    const harvest = (meta?.d && cell.planted) ? addDays(cell.planted, meta.d) : todayISO();
-    const newCell = { id: uid(), r: cell.r, c: cell.c, plant: crop.name, fam: crop.fam, planted: harvest, removed: null, ferts: [], notes: "", prevId: cell.id };
-    patchBed({ cells: [...(bed.cells || []), newCell] });
-    setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: cell.id });
-  };
-  const planFor = (cell) => {
-    const g = nextGroupAfter(cell.fam);
-    const meta = lib.vegByName(cell.plant);
-    const hm = (meta?.d && cell.planted) ? (new Date(addDays(cell.planted, meta.d)).getMonth() + 1) : month;
-    let picks = lib.veg.filter((v) => FAMILIES[v.fam]?.group === g && (v.sow || []).includes(hm));
-    if (!picks.length) picks = lib.veg.filter((v) => FAMILIES[v.fam]?.group === g);
-    const succ = (bed.cells || []).find((x) => x.prevId === cell.id);
-    return { group: g, picks: picks.slice(0, 8), all: lib.veg, onChoose: (crop) => planNext(cell, crop),
+  // --- selection painting (tap to toggle, drag to paint) ---
+  const squareAt = (cx, cy) => { const el = gridRef.current; if (!el) return null; const r = el.getBoundingClientRect();
+    const x = Math.floor((cx - r.left) / r.width * grid.gw), y = Math.floor((cy - r.top) / r.height * grid.gh);
+    if (x < 0 || y < 0 || x >= grid.gw || y >= grid.gh) return null; return { x, y }; };
+  const applyPaint = (k, mode) => setSelSet((s) => { const n = new Set(s); mode === "add" ? n.add(k) : n.delete(k); return n; });
+  const onDown = (e) => { if (!selMode) return; const sq = squareAt(e.clientX, e.clientY); if (!sq) return; e.preventDefault();
+    const k = keyOf(sq.x, sq.y); const mode = selSet.has(k) ? "remove" : "add"; paintRef.current = mode; applyPaint(k, mode); gridRef.current.setPointerCapture?.(e.pointerId); };
+  const onMove = (e) => { if (!selMode || !paintRef.current) return; const sq = squareAt(e.clientX, e.clientY); if (sq) applyPaint(keyOf(sq.x, sq.y), paintRef.current); };
+  const onUp = () => { paintRef.current = null; };
+  const clearSel = () => setSelSet(new Set());
+  const selCells = () => [...selSet].map(xyOf);
+
+  // --- actions on the selection ---
+  const plantThese = (crop) => { const cells = selCells(); if (!cells.length) return;
+    const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed) ? { ...c, removed: V } : c) }));
+    const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted: V, sown: null, ferts: [], notes: "", cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
+    commit([...next, np]); clearSel(); setPicker(null); setSelMode(false); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: np.id }); };
+  const clearThese = () => { const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed && (!p.planted || new Date(p.planted) <= viewDate)) ? { ...c, removed: V } : c) }));
+    commit(next); clearSel(); };
+  const planNextThese = (crop) => { const cells = selCells(); if (!cells.length) return;
+    const firstK = selSet.values().next().value; const firstOwner = owners[firstK]; const meta = firstOwner && lib.vegByName(firstOwner.plant);
+    const planted = (meta?.d && firstOwner?.planted) ? addDays(firstOwner.planted, meta.d) : addDays(todayISO(), 30);
+    const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted, sown: null, ferts: [], notes: "", prevId: firstOwner?.id || null, cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
+    commit([...plantings, np]); clearSel(); setPicker(null); setSelMode(false); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: np.id }); };
+  const choose = (crop) => { if (picker === "plannext") planNextThese(crop); else plantThese(crop); };
+  const openSquare = (x, y) => { const p = owners[keyOf(x, y)]; if (p) setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id }); else { setSelMode(true); } };
+
+  // --- planting patch / remove / plan-next ---
+  const patchPlanting = (id, patch) => commit(plantings.map((p) => { if (p.id !== id) return p;
+    if (Object.prototype.hasOwnProperty.call(patch, "removed")) return { ...p, ...patch, cells: p.cells.map((c) => ({ ...c, removed: patch.removed })) };
+    return { ...p, ...patch }; }));
+  const removePlanting = (id) => { commit(plantings.filter((p) => p.id !== id)); setSel(null); };
+  const nextGroupAfter = (famKey) => { const g = famKey ? FAMILIES[famKey]?.group : null; return (!g || g === "flexible") ? "legume" : ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(g) + 1) % ROTATION_SEQUENCE.length]; };
+  const planFor = (p) => { const g = nextGroupAfter(p.fam); const meta = lib.vegByName(p.plant);
+    const hm = (meta?.d && p.planted) ? (new Date(addDays(p.planted, meta.d)).getMonth() + 1) : month;
+    let picks = lib.veg.filter((v) => FAMILIES[v.fam]?.group === g && (v.sow || []).includes(hm)); if (!picks.length) picks = lib.veg.filter((v) => FAMILIES[v.fam]?.group === g);
+    const succ = plantings.find((x) => x.prevId === p.id);
+    return { group: g, picks: picks.slice(0, 8), all: lib.veg,
+      onChoose: (crop) => { const harvest = (meta?.d && p.planted) ? addDays(p.planted, meta.d) : todayISO();
+        const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted: harvest, sown: null, ferts: [], notes: "", prevId: p.id, cells: p.cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
+        commit([...plantings, np]); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id }); },
       successor: succ ? { id: succ.id, plant: succ.plant, planted: succ.planted } : null,
-      setSuccessorDate: (date) => succ && patchBed({ cells: bed.cells.map((x) => x.id === succ.id ? { ...x, planted: date } : x) }),
-      removeSuccessor: () => succ && patchBed({ cells: bed.cells.filter((x) => x.id !== succ.id) }) };
+      setSuccessorDate: (date) => succ && commit(plantings.map((x) => x.id === succ.id ? { ...x, planted: date } : x)),
+      removeSuccessor: () => succ && commit(plantings.filter((x) => x.id !== succ.id)) };
   };
 
-  // timeline ticks for this bed
-  const markers = (bed.cells || []).flatMap((c) => { const a = [];
-    if (c.planted) a.push({ day: dayKey(new Date(c.planted)), color: new Date(c.planted) > now ? C.harvest : C.fern, label: `${c.plant} planted` });
-    if (c.removed) a.push({ day: dayKey(new Date(c.removed)), color: C.muted, label: `${c.plant} out` });
-    return a; });
-
-  const selCell = sel?.kind === "cell" && sel.bedId === bed.id ? (bed.cells || []).find((x) => x.id === sel.id) : null;
-  const cols = bed.cols || 4, rows = bed.rows || 3;
+  const suggestGroup = nextGroupAfter(bedFamily(bed, viewDate));
+  const selPlanting = sel?.kind === "cell" && sel.bedId === bed.id ? plantings.find((p) => p.id === sel.id) : null;
+  const markers = plantings.flatMap((p) => { const a = []; if (p.planted) a.push({ day: dayKey(new Date(p.planted)), color: new Date(p.planted) > now ? C.harvest : C.fern });
+    const rem = plantingRemoved(p); if (rem) a.push({ day: dayKey(new Date(rem)), color: C.muted }); return a; });
+  const liveList = plantings.filter((p) => { const k = `${p.plant}`; return (!p.planted || new Date(p.planted) <= viewDate) && (p.cells || []).some((c) => !c.removed || new Date(c.removed) >= viewDate); });
+  const liveHere = [...new Set(liveList.map((p) => p.plant))];
+  const liveSquares = (p) => (p.cells || []).filter((c) => (!p.planted || new Date(p.planted) <= viewDate) && (!c.removed || new Date(c.removed) >= viewDate)).length;
 
   return (
     <div>
@@ -1452,7 +1463,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
       <DateSlider data={data} viewDate={viewDate} setViewDate={setViewDate} markers={markers} />
       {dayKey(viewDate) !== dayKey(now) && (
         <div style={{ background: hexA(C.harvest, .12), border: `1px solid ${hexA(C.harvest, .45)}`, borderRadius: 8, padding: "7px 11px", marginBottom: 10, fontSize: 12.5, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
-          <Clock size={14} color={C.harvest} /> Editing the bed as of <strong>{fmtDate(viewDate.toISOString().slice(0,10))}</strong> — anything you plant here is saved as a {new Date(viewDate) > now ? "planned change" : "past record"} on that date.
+          <Clock size={14} color={C.harvest} /> Working in the bed as of <strong>{fmtDate(V)}</strong> — anything you plant or clear is recorded on that date.
         </div>)}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
@@ -1463,18 +1474,14 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 320px", minWidth: 280, maxWidth: mapW }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, fontSize: 13, color: C.muted }}>
-            <span>Grid:</span>
-            <Stepper label="cols" value={cols} onChange={(dx) => resize("cols", dx)} />
-            <Stepper label="rows" value={rows} onChange={(dx) => resize("rows", dx)} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {/* on-screen size + colour-by */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: C.muted }}>On-screen size:</span>
             {[["compact", "S"], ["medium", "M"], ["large", "L"], ["xlarge", "XL"]].map(([v, lab]) => { const cur = (bed.mapSize || section.mapSize || data.mapSize || "medium") === v; return (
               <button key={v} onClick={() => patchBed({ mapSize: v })} title={v} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
             {bed.mapSize && <button onClick={() => patchBed({ mapSize: null })} style={linkBtn}>match area</button>}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: C.muted }}>Colour by:</span>
             {[["crop", "Crop"], ["stage", "Growth stage"]].map(([v, lab]) => { const cur = (data.colourBy || "crop") === v; return (
               <button key={v} onClick={() => setData((d) => ({ ...d, colourBy: v }))} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
@@ -1483,122 +1490,85 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
             {["seed", "seedling", "growing", "ready"].map((k) => <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.muted }}><span style={{ width: 11, height: 11, borderRadius: 3, background: STAGE[k].color }} />{STAGE[k].label}</span>)}
           </div>}
 
-          {/* palette */}
-          <div style={{ marginBottom: 10 }}>
-            {paint ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12.5, color: C.muted }}>Painting <strong style={{ color: C.ink }}>{paint.name}</strong> — click cells to fill.</span>
-                  <button onClick={() => { setPaint(null); setShowPalette(false); }} style={btn(C.harvest)}><Check size={14} /> Done</button>
-                </div>
-                {(() => { const ci = companionInfo(paint.name); if (!ci) return null;
-                  const here = [...new Set((bed.cells || []).filter((c) => visibleAt(c, viewDate)).map((c) => c.plant))];
-                  const clash = here.filter((n) => badNeighbours(paint.name, n));
-                  return (
-                    <div style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 5 }}>
-                      {ci.good.length > 0 && <span style={{ color: C.fern }}><Leaf size={11} style={{ verticalAlign: -1 }} /> Good with {ci.good.map(tokenWord).join(", ")}. </span>}
-                      {ci.avoid.length > 0 && <span style={{ color: C.beet }}><AlertTriangle size={11} style={{ verticalAlign: -1 }} /> Keep away from {ci.avoid.map(tokenWord).join(", ")}.</span>}
-                      {clash.length > 0 && <div style={{ color: C.beet, fontWeight: 600, marginTop: 2 }}>⚠ This bed already has {clash.join(", ")} — not an ideal match.</div>}
-                    </div>); })()}
-              </div>
+          {/* select toggle + action bar */}
+          <div style={{ marginBottom: 8 }}>
+            {!selMode ? (
+              <button onClick={() => { setSelMode(true); setSel(null); }} style={btn(C.fern)}><Grid3x3 size={14} /> Select squares</button>
             ) : (
-              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>Pick a crop, then click cells to plant it. Different crops in different cells = a split bed.</div>
-            )}
-            <button onClick={() => setShowPalette(!showPalette)} style={btn(C.fern)}><Sprout size={14} /> {showPalette ? "Hide crops" : "Choose a crop"}</button>
-            {showPalette && (
-              <div style={{ marginTop: 8, border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, background: C.panel2 }}>
-                <div style={{ fontSize: 11.5, color: C.fernDk, marginBottom: 7, display: "flex", alignItems: "center", gap: 5 }}>
-                  <RefreshCw size={12} color={C.fern} /> Rotation suggests <strong>{GROUP_LABEL[suggestGroup]}</strong> next — highlighted below.
-                </div>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "0 8px", background: "#fff", marginBottom: 8 }}>
-                  <Search size={13} color={C.muted} />
-                  <input value={palQ} onChange={(e) => setPalQ(e.target.value)} placeholder="Search crops…" style={{ border: "none", background: "transparent", outline: "none", padding: "6px 0", fontSize: 12.5, color: C.ink, fontFamily: "inherit", width: "100%" }} />
-                  {palQ && <button onClick={() => setPalQ("")} style={iconBtn}><X size={13} /></button>}
-                </span>
-                <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 150, overflowY: "auto" }}>
-                  {plantsForSection(lib, section.kind).filter((p) => !palQ.trim() || p.name.toLowerCase().includes(palQ.trim().toLowerCase())).map((p) => { const picked = paint?.name === p.name; const sug = FAMILIES[p.fam]?.group === suggestGroup;
-                    return (
-                      <button key={p.name} onClick={() => setPaint(p)} onMouseEnter={() => setHover(p)}
-                        style={{ ...chip, cursor: "pointer", position: "relative", background: picked ? p.color : sug ? hexA(C.fern, .12) : "#fff", color: picked ? "#fff" : C.ink, border: `${sug ? 2 : 1}px solid ${sug ? C.fern : hexA(p.color, .6)}`, fontWeight: sug ? 600 : 500 }}>
-                        {sug && !picked && <Sprout size={10} color={C.fern} style={{ marginRight: 3, verticalAlign: -1 }} />}{p.name}
-                      </button>); })}
-                </div>
-                {(() => { const qp = hover || paint; if (!qp) return null;
-                  const sug = FAMILIES[qp.fam]?.group === suggestGroup;
-                  const lastLabel = FAMILIES[bedFamily(bed, viewDate)]?.label;
-                  const reason = sug ? `Rotation pick: this bed last grew ${lastLabel || "nothing yet"}, so ${GROUP_LABEL[suggestGroup].toLowerCase()} come next — they balance the soil and dodge shared pests.` : null;
-                  return <PlantQuickLook plant={qp} reason={reason} month={month} />; })()}
+              <div style={{ ...card, padding: 10, background: C.panel2 }}>
+                <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>{selSet.size ? `${selSet.size} square${selSet.size === 1 ? "" : "s"} selected` : "Tap squares, or drag to paint an area"}</div>
+                {picker ? (
+                  <div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>{picker === "plannext" ? "Choose the crop to follow here:" : "Choose a crop for the selected squares:"} <button onClick={() => setPicker(null)} style={linkBtn}>back</button></div>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "0 8px", background: "#fff", marginBottom: 8 }}>
+                      <Search size={13} color={C.muted} />
+                      <input value={palQ} onChange={(e) => setPalQ(e.target.value)} placeholder="Search crops…" style={{ border: "none", background: "transparent", outline: "none", padding: "6px 0", fontSize: 12.5, color: C.ink, fontFamily: "inherit", width: "100%" }} />
+                      {palQ && <button onClick={() => setPalQ("")} style={iconBtn}><X size={13} /></button>}
+                    </span>
+                    <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 150, overflowY: "auto" }}>
+                      {plantsForSection(lib, section.kind).filter((p) => !palQ.trim() || p.name.toLowerCase().includes(palQ.trim().toLowerCase())).map((p) => { const sug = FAMILIES[p.fam]?.group === suggestGroup;
+                        return (<button key={p.name} onClick={() => choose(p)} onMouseEnter={() => setHover(p)}
+                          style={{ ...chip, cursor: "pointer", background: sug ? hexA(C.fern, .12) : "#fff", color: C.ink, border: `${sug ? 2 : 1}px solid ${sug ? C.fern : hexA(p.color, .6)}`, fontWeight: sug ? 600 : 500 }}>
+                          {sug && <Sprout size={10} color={C.fern} style={{ marginRight: 3, verticalAlign: -1 }} />}{p.name}</button>); })}
+                    </div>
+                    {hover && <PlantQuickLook plant={hover} reason={FAMILIES[hover.fam]?.group === suggestGroup ? `Rotation pick: this bed last grew ${FAMILIES[bedFamily(bed, viewDate)]?.label || "nothing"}, so ${GROUP_LABEL[suggestGroup].toLowerCase()} come next.` : null} month={month} />}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    <button onClick={() => { if (selSet.size) setPicker("plant"); }} disabled={!selSet.size} style={{ ...btn(C.fern), opacity: selSet.size ? 1 : .4 }}><Sprout size={14} /> Plant these</button>
+                    <button onClick={clearThese} disabled={!selSet.size} style={{ ...btn(C.harvest), opacity: selSet.size ? 1 : .4 }}><Check size={14} /> Clear these</button>
+                    <button onClick={() => { if (selSet.size) setPicker("plannext"); }} disabled={!selSet.size} style={{ ...btnOutline(C.fern), opacity: selSet.size ? 1 : .4 }}><RefreshCw size={13} /> Plan next here</button>
+                    {selSet.size > 0 && <button onClick={clearSel} style={btnOutline(C.muted)}>Deselect</button>}
+                    <button onClick={() => { setSelMode(false); clearSel(); setPicker(null); }} style={btnOutline(C.muted)}><X size={13} /> Done</button>
+                  </div>)}
               </div>)}
           </div>
 
-          {/* companion conflicts already in this bed */}
-          {(() => {
-            const here = [...new Set((bed.cells || []).filter((c) => visibleAt(c, viewDate)).map((c) => c.plant))];
-            const pairs = [];
+          {/* companion clash among what's growing here */}
+          {(() => { const here = liveHere; const pairs = [];
             for (let i = 0; i < here.length; i++) for (let j = i + 1; j < here.length; j++) if (badNeighbours(here[i], here[j])) pairs.push(`${here[i]} + ${here[j]}`);
             if (!pairs.length) return null;
-            return (
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: hexA(C.beet, .1), border: `1px solid ${hexA(C.beet, .4)}`, borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
-                <AlertTriangle size={15} color={C.beet} style={{ flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 12, color: C.ink, lineHeight: 1.45 }}>Companion clash in this bed: <strong>{pairs.join("; ")}</strong>. They tend not to thrive side by side — fine if it's all you've got, but worth splitting next time.</span>
-              </div>); })()}
+            return (<div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: hexA(C.beet, .1), border: `1px solid ${hexA(C.beet, .4)}`, borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+              <AlertTriangle size={15} color={C.beet} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 12, color: C.ink, lineHeight: 1.45 }}>Companion clash here: <strong>{pairs.join("; ")}</strong> — they tend not to thrive side by side.</span>
+            </div>); })()}
 
-          {/* the grid */}
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: 4, background: C.soil, padding: 6, borderRadius: 10, aspectRatio: bedReal ? `${bedReal.w} / ${bedReal.l}` : (bed.dimM?.w && bed.dimM?.l) ? `${bed.dimM.w} / ${bed.dimM.l}` : `${cols} / ${rows}` }}>
-            {Array.from({ length: rows * cols }).map((_, i) => {
-              const r = Math.floor(i / cols), c = i % cols; const cell = cellAt(r, c);
-              const planned = cell && new Date(cell.planted) > now;
-              const stage = cell && byStage ? cropStage(cell, lib.vegByName(cell.plant), viewDate) : null;
-              const col = cell ? (stage ? STAGE[stage].color : lib.color(cell.plant, cell.fam)) : null;
+          {/* the fine grid */}
+          <div ref={gridRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+            style={{ display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: grid.gw > 18 ? 1 : 2, background: C.soil, padding: 5, borderRadius: 10, aspectRatio: `${grid.gw} / ${grid.gh}`, touchAction: selMode ? "none" : "auto", userSelect: "none" }}>
+            {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
+              const x = i % grid.gw, y = Math.floor(i / grid.gw); const k = keyOf(x, y); const p = owners[k]; const isSel = selSet.has(k);
+              const stage = p && byStage ? cropStage(p, lib.vegByName(p.plant), viewDate) : null;
+              const col = p ? (stage ? STAGE[stage].color : lib.color(p.plant, p.fam)) : null;
+              const planned = p && new Date(p.planted) > now;
               return (
-                <button key={i} onClick={() => setCell(r, c)} title={cell && stage ? STAGE[stage].label : undefined}
-                  style={{ border: cell ? `${planned ? "2px dashed " + C.harvest : "1px solid " + col}` : `1px dashed ${hexA("#FFFFFF", .4)}`, borderRadius: 5, cursor: "pointer", background: cell ? hexA(col, planned ? .5 : .85) : hexA("#FBFAF4", .15), color: "#fff", fontSize: 10.5, fontWeight: 600, padding: 2, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.1, minHeight: 30, textShadow: "0 1px 2px rgba(0,0,0,.5)", overflow: "hidden" }}>
-                  {cell ? cell.plant : ""}
-                </button>);
+                <div key={i} onClick={selMode ? undefined : () => openSquare(x, y)} title={p ? `${p.plant}${stage ? " · " + STAGE[stage].label : ""}` : ""}
+                  style={{ background: p ? hexA(col, planned ? .5 : .9) : hexA("#FBFAF4", .14), borderRadius: 2, cursor: "pointer",
+                    border: planned ? `1px dashed ${C.harvest}` : "none",
+                    boxShadow: isSel ? `inset 0 0 0 2px #fff, 0 0 0 1px ${C.fernDk}` : "none" }} />);
             })}
           </div>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Click an empty cell to choose a crop, or a planted one for its details. Dashed amber = a planned future planting.</p>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
+            {selMode ? "Tap squares or drag to paint a selection, then choose an action above." : `Each square ≈ ${grid.sq} m. Tap a planting to open it, or “Select squares” to plant/clear an area.`}
+            {!grid.metres && <> <span style={{ color: C.beet }}>Set this bed's size in the area's Edit layout for true {grid.sq} m squares.</span></>}
+          </p>
 
-          {/* ---- NEW fine-grid model: read-only migration preview (Stage 1) ---- */}
-          {(bed.cells || []).length > 0 && (() => {
-            const grid = bedFineGrid(bed, bedReal);
-            const plantings = cellsToPlantings(bed, grid);
-            const owners = squareOwners(plantings, grid, viewDate);
-            const counts = plantings.map((p) => ({ p, n: p.cells.length })).sort((a, b) => b.n - a.n);
-            return (
-              <div style={{ marginTop: 12, border: `1px dashed ${C.sage}`, borderRadius: 10, background: hexA(C.sage, .06), padding: 11 }}>
-                <button onClick={() => setShowPreview(!showPreview)} style={{ ...linkBtn, fontWeight: 600, fontSize: 13 }}>
-                  {showPreview ? "▾" : "▸"} New planting grid — preview ({grid.gw}×{grid.gh} squares of {grid.sq} m{grid.metres ? "" : ", set bed size for real 0.25 m squares"})
-                </button>
-                {showPreview && <>
-                  <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, margin: "7px 0" }}>This is how your bed converts to the new model, where a planting owns a group of squares (any shape) and each square can be cleared on its own. It's read-only for now — your bed above still works as usual. Just checking the conversion looks right before I make this the editable grid.</p>
-                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: 1.5, background: C.soil, padding: 5, borderRadius: 8, aspectRatio: `${grid.gw} / ${grid.gh}`, maxWidth: mapW }}>
-                    {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
-                      const x = i % grid.gw, y = Math.floor(i / grid.gw); const p = owners[y * grid.gw + x];
-                      if (!p) return <div key={i} style={{ background: hexA("#FBFAF4", .12), borderRadius: 2 }} />;
-                      const stage = byStage ? cropStage(p, lib.vegByName(p.plant), viewDate) : null;
-                      const col = stage ? STAGE[stage].color : lib.color(p.plant, p.fam);
-                      return <div key={i} title={`${p.plant}${stage ? " · " + STAGE[stage].label : ""}`} style={{ background: hexA(col, .9), borderRadius: 2 }} />;
-                    })}
-                  </div>
-                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
-                    {counts.map(({ p, n }, i) => (
-                      <div key={i} style={{ fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ width: 11, height: 11, borderRadius: 3, background: lib.color(p.plant, p.fam), flexShrink: 0 }} />
-                        <strong>{p.plant}</strong>{p.variety ? ` (${p.variety})` : ""}
-                        <span style={{ color: C.muted }}>· {n} square{n === 1 ? "" : "s"} ≈ {(n * grid.sq * grid.sq).toFixed(2)} m²{p.planted ? ` · planted ${fmtDate(p.planted)}` : ""}{p.removed ? ` · cleared ${fmtDate(p.removed)}` : ""}</span>
-                      </div>))}
-                    {counts.length === 0 && <span style={{ fontSize: 12, color: C.muted }}>Nothing planted to convert.</span>}
-                  </div>
-                </>}
-              </div>);
-          })()}
+          {/* what's growing here now */}
+          {liveList.length > 0 && <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+            {liveList.map((p) => { const n = liveSquares(p); const m2 = (n * grid.sq * grid.sq).toFixed(2); const planned = new Date(p.planted) > now;
+              return (<button key={p.id} onClick={() => setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id })}
+                style={{ background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7, padding: "2px 0" }}>
+                <span style={{ width: 11, height: 11, borderRadius: 3, background: lib.color(p.plant, p.fam), flexShrink: 0 }} />
+                <strong>{p.plant}</strong>{p.variety ? ` (${p.variety})` : ""}
+                <span style={{ color: C.muted }}>· {n} sq ≈ {m2} m²{planned ? ` · planned ${fmtDate(p.planted)}` : ""}</span>
+              </button>); })}
+          </div>}
 
           <textarea value={bed.notes} placeholder="Bed notes — soil, sun, what did well…" onChange={(e) => patchBed({ notes: e.target.value })}
             style={{ width: "100%", marginTop: 10, minHeight: 48, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
         </div>
 
-        {selCell && <DetailPanel item={selCell} kind="veg" data={data} shade={dirLabel((((data.place || DEFAULT_PLACE).hemisphere === "south" ? (data.north ?? 0) : (data.north ?? 0) + 180)) + 180)} patch={(p) => patchBed({ cells: bed.cells.map((x) => x.id === selCell.id ? { ...x, ...p } : x) })} remove={() => removeCell(selCell)} close={() => setSel(null)} display={display} extra={greenhouse} planContext={planFor(selCell)} />}
+        {selPlanting && <DetailPanel item={selPlanting} kind="veg" data={data} shade={dirLabel((((data.place || DEFAULT_PLACE).hemisphere === "south" ? (data.north ?? 0) : (data.north ?? 0) + 180)) + 180)} patch={(p) => patchPlanting(selPlanting.id, p)} remove={() => removePlanting(selPlanting.id)} close={() => setSel(null)} display={display} extra={greenhouse} planContext={planFor(selPlanting)} />}
       </div>
     </div>
   );
@@ -1845,9 +1815,18 @@ function Field({ icon: Icon, label, children }) {
 }
 
 // ===================== bed family (for rotation/colour) ===========
+// a bed's plantings — stored, or derived on the fly from the legacy cell layout
+const bedPlantings = (bed) => bed.plantings || cellsToPlantings(bed, bedFineGrid(bed, null));
+// when EVERY square of a planting is cleared, the planting's effective "removed" date is the last clear
+const plantingRemoved = (p) => { const cs = p.cells || []; if (!cs.length) return p.removed || null;
+  return cs.every((c) => c.removed) ? cs.map((c) => c.removed).sort().slice(-1)[0] : (p.removed || null); };
+// view a planting as a single crop record (so the old per-cell readers keep working)
+const plantingAsCell = (p) => ({ id: p.id, plant: p.plant, fam: p.fam, variety: p.variety, planted: p.planted, removed: plantingRemoved(p), ferts: p.ferts || [], notes: p.notes || "", sown: p.sown || null, doneTasks: p.doneTasks || [] });
+
 function bedFamily(bed, viewDate) {
-  const live = (bed.cells || []).filter((c) => !viewDate || visibleAt(c, viewDate));
-  const pool = live.length ? live : (bed.cells || []);
+  const ps = bedPlantings(bed).map(plantingAsCell);
+  const live = ps.filter((c) => !viewDate || visibleAt(c, viewDate));
+  const pool = live.length ? live : ps;
   const veg = pool.filter((c) => FAMILIES[c.fam] && FAMILIES[c.fam].group !== "flexible");
   if (veg.length) {
     const counts = {}; veg.forEach((c) => counts[c.fam] = (counts[c.fam] || 0) + 1);
@@ -1877,7 +1856,7 @@ function DoNowView({ data, month, hemi = "south", display, setTab, setNav, setSe
   const careSeen = new Set();
   const addCare = (o) => { const key = `${o.what}|${o.where}`; if (careSeen.has(key)) return; careSeen.add(key); care.push(o); };
   data.sections.forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => {
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => {
       const go = { kind: "cell", sectionId: s.id, bedId: b.id, cellId: c.id };
       if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)), go });
       const meta = lib.vegByName(c.plant);
@@ -1918,8 +1897,10 @@ function DoNowView({ data, month, hemi = "south", display, setTab, setNav, setSe
   const openBeds = [];
   data.sections.forEach((s) => { if (SECTION_KINDS[s.kind].uses !== "beds") return;
     (s.beds || []).forEach((b) => {
-      const occ = new Set((b.cells || []).filter((c) => visibleAt(c, today)).map((c) => `${c.r},${c.c}`));
-      const free = (b.cols || 4) * (b.rows || 3) - occ.size;
+      const ps = bedPlantings(b);
+      const occ = ps.filter((p) => !plantingRemoved(p) && (!p.planted || new Date(p.planted) <= today)).reduce((n, p) => n + ((p.cells || []).length || 1), 0);
+      const totalSq = b.grid ? b.grid.w * b.grid.h : (b.cols || 4) * (b.rows || 3);
+      const free = totalSq - occ;
       if (free <= 0) return;
       const g = rotationNextGroup(bedFamily(b, today));
       let fits = sowable.filter((v) => FAMILIES[v.fam]?.group === g);
@@ -2519,7 +2500,7 @@ function ReportView({ data, setData, month, hemi, display }) {
   // crops you can report on: anything planted anywhere, plus anything with logged harvests
   const cropSet = new Set(harvestedCrops(data));
   (data.sections || []).forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => c.plant && cropSet.add(c.plant)));
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => c.plant && cropSet.add(c.plant)));
     (s.plants || []).forEach((p) => p.plant && cropSet.add(p.plant));
   });
   const cropList = [...cropSet].sort();
@@ -2553,7 +2534,7 @@ function ReportView({ data, setData, month, hemi, display }) {
   const dueSoon = (months) => Array.isArray(months) && (months.includes(month) || (wideHorizon && months.includes(nextMonth)));
   const pushLog = (f, plant, where) => { const e = { ...f, plant, where, dk: dayKey(new Date(f.date)) }; log.push(e); if (f.type === "harvest") harvestLog.push(e); };
   sections.forEach((s) => {
-    (s.beds || []).forEach((b) => (b.cells || []).forEach((c) => {
+    (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => {
       if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)) });
       const meta = lib.vegByName(c.plant);
       const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
@@ -2682,8 +2663,8 @@ function ReportView({ data, setData, month, hemi, display }) {
         </>}
 
         {on.growing && <><H>What's growing now</H>
-          {bedSecs.every((s) => (s.beds || []).every((b) => !(b.cells || []).some((c) => visibleAt(c, today)))) && plantSecs.every((s) => (s.plants || []).length === 0) && <div style={{ ...row, color: C.muted }}>Nothing recorded yet.</div>}
-          {bedSecs.map((s) => (s.beds || []).map((b) => { const cells = (b.cells || []).filter((c) => visibleAt(c, today)); if (!cells.length) return null;
+          {bedSecs.every((s) => (s.beds || []).every((b) => !bedPlantings(b).map(plantingAsCell).some((c) => visibleAt(c, today)))) && plantSecs.every((s) => (s.plants || []).length === 0) && <div style={{ ...row, color: C.muted }}>Nothing recorded yet.</div>}
+          {bedSecs.map((s) => (s.beds || []).map((b) => { const cells = bedPlantings(b).map(plantingAsCell).filter((c) => visibleAt(c, today)); if (!cells.length) return null;
             const counts = {}; cells.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; });
             return <div key={b.id} style={row}>• <strong>{b.name}</strong> ({s.name}): {Object.entries(counts).map(([n, q]) => `${n}${q > 1 ? ` ×${q}` : ""}`).join(", ")}</div>; }))}
           {plantSecs.map((s) => (s.plants || []).length ? <div key={s.id} style={row}>• <strong>{s.name}</strong>: {[...new Set((s.plants || []).map((p) => p.plant))].join(", ")}</div> : null)}
