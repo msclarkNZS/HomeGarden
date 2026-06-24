@@ -219,6 +219,9 @@ const SECTION_KINDS = {
 };
 
 // ===================== persistence & helpers ======================
+// Bump APP_BUILD on every deploy — it's shown in the header & settings so you
+// can confirm the live site has refreshed to the latest version.
+const APP_BUILD = "2026-06-25 · build 42";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -747,7 +750,7 @@ export default function GardenManager() {
           <div style={{ flex: 1 }}>
             <input value={data.propertyName} onChange={(e) => update({ propertyName: e.target.value })}
               style={{ fontFamily: display, fontSize: 22, fontWeight: 600, background: "transparent", border: "none", color: "#F4F1E6", width: "100%", outline: "none" }} />
-            <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()}</div>
+            <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()} · <span style={{ opacity: .7 }}>{APP_BUILD}</span></div>
           </div>
           <button onClick={doUndo} disabled={!canUndo} title="Undo last change" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: canUndo ? "pointer" : "default", color: "#F1EEE2", opacity: canUndo ? 1 : .4, display: "inline-flex" }}><Undo2 size={18} /></button>
           <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex" }}><Settings size={18} /></button>
@@ -2460,6 +2463,10 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
         <p style={{ fontSize: 11.5, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>Saves your whole garden — beds, plantings, plans, photos and settings — as one file. Keep it somewhere safe; it's your safety net if you change devices, clear the browser, or want the same garden in two places.</p>
 
         <p style={{ fontSize: 11.5, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>Changing location updates the weather, seasons and sun guidance straight away. Sowing windows shift by six months when you cross the equator, but they stay calibrated to a temperate climate — for a very different one, fine-tune each crop's months with the pencil in the Plant guide.</p>
+
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${C.line}`, fontSize: 11.5, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
+          <Info size={13} color={C.sage} /> App version: <strong style={{ color: C.fernDk }}>{APP_BUILD}</strong>
+        </div>
       </div>
     </div>
   );
