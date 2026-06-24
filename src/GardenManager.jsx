@@ -221,7 +221,7 @@ const SECTION_KINDS = {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 43";
+const APP_BUILD = "2026-06-25 · build 44";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1431,7 +1431,9 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
     const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted, sown: null, ferts: [], notes: "", prevId: firstOwner?.id || null, cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
     commit([...plantings, np]); clearSel(); setPicker(null); setSelMode(false); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: np.id }); };
   const choose = (crop) => { if (picker === "plannext") planNextThese(crop); else plantThese(crop); };
-  const openSquare = (x, y) => { const p = owners[keyOf(x, y)]; if (p) setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id }); else { setSelMode(true); } };
+  const openSquare = (x, y) => { const p = owners[keyOf(x, y)];
+    if (!p) { setSel(null); return; }
+    setSel(selPlanting && selPlanting.id === p.id ? null : { kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id }); };
 
   // --- planting patch / remove / plan-next ---
   const patchPlanting = (id, patch) => commit(plantings.map((p) => { if (p.id !== id) return p;
