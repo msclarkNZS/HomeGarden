@@ -221,7 +221,7 @@ const SECTION_KINDS = {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 44";
+const APP_BUILD = "2026-06-25 · build 46";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -375,6 +375,15 @@ function harvestedCrops(data) {
   });
   (data.harvests || []).forEach((h) => set.add(h.plant));
   return [...set].sort();
+}
+
+// total "what you planted" for a crop across all its plantings (by unit)
+function cropSownTotals(data, name) {
+  const tot = {};
+  (data.sections || []).forEach((s) => (s.beds || []).forEach((b) => bedPlantings(b).forEach((p) => {
+    if (p.plant === name && p.sown && p.sown.qty != null) { const u = p.sown.unit || "plants"; tot[u] = Math.round(((tot[u] || 0) + p.sown.qty) * 100) / 100; }
+  })));
+  return Object.entries(tot).map(([u, q]) => `${q} ${u}`).join(", ");
 }
 
 function buildLibrary(data) {
@@ -918,6 +927,26 @@ function squareOwners(plantings, grid, viewDate) {
   return owner;
 }
 
+// rescale a bed's plantings from one square grid to another (when the square size changes)
+function regridBed(bed, oldGrid, newGW, newGH) {
+  const ownerOf = {};
+  (bed.plantings || []).forEach((p) => (p.cells || []).forEach((c) => { ownerOf[`${c.x},${c.y}`] = { pid: p.id, removed: c.removed || null }; }));
+  const byId = {}; (bed.plantings || []).forEach((p) => { byId[p.id] = { ...p, cells: [] }; });
+  for (let ny = 0; ny < newGH; ny++) for (let nx = 0; nx < newGW; nx++) {
+    const ox = Math.min(oldGrid.w - 1, Math.floor((nx + 0.5) / newGW * oldGrid.w));
+    const oy = Math.min(oldGrid.h - 1, Math.floor((ny + 0.5) / newGH * oldGrid.h));
+    const o = ownerOf[`${ox},${oy}`];
+    if (o && byId[o.pid]) byId[o.pid].cells.push({ x: nx, y: ny, removed: o.removed });
+  }
+  // safeguard: a planting that lost all squares (scaled right down) keeps one near its old centroid
+  (bed.plantings || []).forEach((p) => { if (byId[p.id].cells.length === 0 && (p.cells || []).length) {
+    const cx = p.cells.reduce((a, c) => a + c.x, 0) / p.cells.length, cy = p.cells.reduce((a, c) => a + c.y, 0) / p.cells.length;
+    const nx = clamp(Math.round(cx / oldGrid.w * newGW), 0, newGW - 1), nyy = clamp(Math.round(cy / oldGrid.h * newGH), 0, newGH - 1);
+    byId[p.id].cells.push({ x: nx, y: nyy, removed: p.cells.every((c) => c.removed) ? p.cells[0].removed : null });
+  } });
+  return Object.values(byId).filter((p) => p.cells.length > 0);
+}
+
 // ===================== property / sections ========================
 function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }) {
   if (nav.level === "section") {
@@ -1402,6 +1431,11 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   useEffect(() => { if (!bed.plantings) { const g = bedFineGrid(bed, bedReal); patchBed({ plantings: cellsToPlantings(bed, g), grid: { w: g.gw, h: g.gh }, sq: g.sq }); } }, [bed.id]);
 
   const commit = (next) => patchBed({ plantings: next });
+  const setSquareSize = (newSq) => { if (newSq === (bed.sq || 0.25) || !bedReal) return;
+    const ng = bedFineGrid({ ...bed, sq: newSq }, bedReal);
+    const og = bed.grid || { w: grid.gw, h: grid.gh };
+    patchBed({ plantings: regridBed({ ...bed, plantings }, og, ng.gw, ng.gh), grid: { w: ng.gw, h: ng.gh }, sq: newSq });
+    setSel(null); setSelMode(false); };
   const owners = squareOwners(plantings, grid, viewDate);
   const keyOf = (x, y) => y * grid.gw + x;
   const xyOf = (k) => ({ x: k % grid.gw, y: Math.floor(k / grid.gw) });
@@ -1493,6 +1527,12 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           </div>
           {byStage && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
             {["seed", "seedling", "growing", "ready"].map((k) => <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.muted }}><span style={{ width: 11, height: 11, borderRadius: 3, background: STAGE[k].color }} />{STAGE[k].label}</span>)}
+          </div>}
+          {bedReal && <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Square size:</span>
+            {[[0.25, "0.25 m"], [0.5, "0.5 m"]].map(([v, lab]) => { const cur = (bed.sq || 0.25) === v; return (
+              <button key={v} onClick={() => setSquareSize(v)} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
+            <span style={{ fontSize: 11, color: C.muted }}>{grid.gw}×{grid.gh} squares</span>
           </div>}
 
           {/* select toggle + action bar */}
@@ -1642,6 +1682,10 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
   };
   const removeFert = (id) => patch({ ferts: (item.ferts || []).filter((f) => f.id !== id) });
   const stats = data ? cropHarvestStats(data, item.plant) : null;
+  const myHarv = (item.ferts || []).filter((f) => f.type === "harvest");
+  const harvTotals = {}; myHarv.forEach((h) => { if (h.qty != null) { const u = h.unit || "picks"; harvTotals[u] = Math.round(((harvTotals[u] || 0) + h.qty) * 100) / 100; } });
+  const harvLabel = Object.entries(harvTotals).map(([u, q]) => `${q} ${u}`).join(", ");
+  const SOWN_UNITS = ["seeds", "seedlings", "plants", "punnets", "bulbs", "cloves", "tubers", "sets", "bags", "runners", "g", "kg"];
 
   return (
     <div style={{ flex: "1 1 280px", minWidth: 260, ...card }}>
@@ -1672,6 +1716,27 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
       </Field>
 
       <Field icon={Apple} label="Est. harvest"><span style={{ fontSize: 13, color: C.ink }}>{harvest}</span></Field>
+
+      {kind === "veg" && (
+        <Field icon={Sprout} label="Planted in">
+          <span style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+            <input type="number" min="0" step="any" value={item.sown?.qty ?? ""} placeholder="qty"
+              onChange={(e) => patch({ sown: { ...(item.sown || {}), qty: e.target.value === "" ? null : Number(e.target.value) } })}
+              style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 7px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+            <select value={item.sown?.unit || "plants"} onChange={(e) => patch({ sown: { ...(item.sown || {}), unit: e.target.value } })}
+              style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
+              {SOWN_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <input value={item.sown?.what || ""} placeholder="e.g. seed potatoes" onChange={(e) => patch({ sown: { ...(item.sown || {}), what: e.target.value } })}
+              style={{ flex: "1 1 80px", minWidth: 70, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 7px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+          </span>
+        </Field>)}
+
+      {kind === "veg" && (item.sown?.qty != null || myHarv.length > 0) && (
+        <div style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", background: hexA(C.sage, .12), borderRadius: 7, padding: "7px 9px", lineHeight: 1.5 }}>
+          {item.sown?.qty != null && <div>🌱 In: <strong style={{ color: C.ink }}>{item.sown.qty} {item.sown.unit || ""}{item.sown.what ? ` ${item.sown.what}` : ""}</strong></div>}
+          {myHarv.length > 0 && <div>🧺 Out: <strong style={{ color: C.harvest }}>{harvLabel || `${myHarv.length} picks`}</strong> over {myHarv.length} pick{myHarv.length === 1 ? "" : "s"}</div>}
+        </div>)}
 
       <Field icon={Sprout} label="Variety">
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1 }}>
@@ -2653,7 +2718,8 @@ function ReportView({ data, setData, month, hemi, display }) {
             <span style={{ fontSize: 12, color: C.muted }}>{windowLabel}</span>
           </div>
           {focusStats && <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.5, marginTop: 4 }}>
-            {focusStats.totalLabel ? <>Total logged (all time): <strong>{focusStats.totalLabel}</strong> over {focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"}. </> : <>{focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"} logged. </>}
+            {(() => { const sown = cropSownTotals(data, focus); return sown ? <>🌱 Planted in total: <strong>{sown}</strong>. </> : null; })()}
+            {focusStats.totalLabel ? <>🧺 Harvested (all time): <strong style={{ color: C.harvest }}>{focusStats.totalLabel}</strong> over {focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"}. </> : <>{focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"} logged. </>}
             {focusStats.avgFirst != null && <>First pick ≈{focusStats.avgFirst} days after planting. </>}
             {focusStats.last && <>Most recent: {fmtDate(focusStats.last)}.</>}
           </div>}
