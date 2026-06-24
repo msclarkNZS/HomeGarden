@@ -221,7 +221,7 @@ const SECTION_KINDS = {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 42";
+const APP_BUILD = "2026-06-25 · build 43";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -750,7 +750,7 @@ export default function GardenManager() {
           <div style={{ flex: 1 }}>
             <input value={data.propertyName} onChange={(e) => update({ propertyName: e.target.value })}
               style={{ fontFamily: display, fontSize: 22, fontWeight: 600, background: "transparent", border: "none", color: "#F4F1E6", width: "100%", outline: "none" }} />
-            <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()} · <span style={{ opacity: .7 }}>{APP_BUILD}</span></div>
+            <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()}</div>
           </div>
           <button onClick={doUndo} disabled={!canUndo} title="Undo last change" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: canUndo ? "pointer" : "default", color: "#F1EEE2", opacity: canUndo ? 1 : .4, display: "inline-flex" }}><Undo2 size={18} /></button>
           <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex" }}><Settings size={18} /></button>
@@ -1538,18 +1538,31 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
 
           {/* the fine grid */}
           <div ref={gridRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-            style={{ display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: grid.gw > 18 ? 1 : 2, background: C.soil, padding: 5, borderRadius: 10, aspectRatio: `${grid.gw} / ${grid.gh}`, touchAction: selMode ? "none" : "auto", userSelect: "none" }}>
+            style={{ position: "relative", display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: grid.gw > 18 ? 1 : 2, background: C.soil, padding: 5, borderRadius: 10, aspectRatio: `${grid.gw} / ${grid.gh}`, touchAction: selMode ? "none" : "auto", userSelect: "none" }}>
             {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
               const x = i % grid.gw, y = Math.floor(i / grid.gw); const k = keyOf(x, y); const p = owners[k]; const isSel = selSet.has(k);
               const stage = p && byStage ? cropStage(p, lib.vegByName(p.plant), viewDate) : null;
               const col = p ? (stage ? STAGE[stage].color : lib.color(p.plant, p.fam)) : null;
               const planned = p && new Date(p.planted) > now;
+              const isSelPlant = !selMode && selPlanting && p && p.id === selPlanting.id;
+              const dim = !selMode && selPlanting && !isSelPlant;
               return (
                 <div key={i} onClick={selMode ? undefined : () => openSquare(x, y)} title={p ? `${p.plant}${stage ? " · " + STAGE[stage].label : ""}` : ""}
-                  style={{ background: p ? hexA(col, planned ? .5 : .9) : hexA("#FBFAF4", .14), borderRadius: 2, cursor: "pointer",
+                  style={{ background: p ? hexA(col, planned ? .5 : .9) : hexA("#FBFAF4", .14), borderRadius: 2, cursor: "pointer", opacity: dim ? .28 : 1, transition: "opacity .15s",
                     border: planned ? `1px dashed ${C.harvest}` : "none",
-                    boxShadow: isSel ? `inset 0 0 0 2px #fff, 0 0 0 1px ${C.fernDk}` : "none" }} />);
+                    boxShadow: isSel ? `inset 0 0 0 2px #fff, 0 0 0 1px ${C.fernDk}` : isSelPlant ? `inset 0 0 0 2px #fff, 0 0 0 2px ${C.fernDk}` : "none" }} />);
             })}
+            {/* crop name labels, centred on each planting's visible area */}
+            {!selMode && (() => {
+              const own = {}; Object.entries(owners).forEach(([k, p]) => { (own[p.id] = own[p.id] || []).push(Number(k)); });
+              return Object.entries(own).map(([id, ks]) => { const p = plantings.find((pp) => pp.id === id); if (!p) return null;
+                const xs = ks.map((k) => k % grid.gw), ys = ks.map((k) => Math.floor(k / grid.gw));
+                const cx = (xs.reduce((a, b) => a + b, 0) / xs.length + 0.5) / grid.gw * 100;
+                const cy = (ys.reduce((a, b) => a + b, 0) / ys.length + 0.5) / grid.gh * 100;
+                const dim = selPlanting && selPlanting.id !== id;
+                return <span key={id} style={{ position: "absolute", left: `${cx}%`, top: `${cy}%`, transform: "translate(-50%,-50%)", pointerEvents: "none", fontSize: 9.5, fontWeight: 600, lineHeight: 1.1, color: "#fff", background: hexA(C.fernDk, .74), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap", maxWidth: "92%", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 1px 2px rgba(0,0,0,.5)", opacity: dim ? .25 : 1, boxShadow: selPlanting && selPlanting.id === id ? "0 0 0 1.5px #fff" : "none" }}>{p.plant}</span>;
+              });
+            })()}
           </div>
           <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
             {selMode ? "Tap squares or drag to paint a selection, then choose an action above." : `Each square ≈ ${grid.sq} m. Tap a planting to open it, or “Select squares” to plant/clear an area.`}
@@ -1557,10 +1570,11 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           </p>
 
           {/* what's growing here now */}
-          {liveList.length > 0 && <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
-            {liveList.map((p) => { const n = liveSquares(p); const m2 = (n * grid.sq * grid.sq).toFixed(2); const planned = new Date(p.planted) > now;
-              return (<button key={p.id} onClick={() => setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id })}
-                style={{ background: "transparent", border: "none", textAlign: "left", cursor: "pointer", fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7, padding: "2px 0" }}>
+          {liveList.length > 0 && <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Growing here — tap one to highlight its squares:</div>
+            {liveList.map((p) => { const n = liveSquares(p); const m2 = (n * grid.sq * grid.sq).toFixed(2); const planned = new Date(p.planted) > now; const on = selPlanting?.id === p.id;
+              return (<button key={p.id} onClick={() => setSel(on ? null : { kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id })}
+                style={{ background: on ? hexA(C.fern, .14) : "transparent", border: on ? `1px solid ${hexA(C.fern, .5)}` : "1px solid transparent", borderRadius: 7, textAlign: "left", cursor: "pointer", fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7, padding: "4px 6px" }}>
                 <span style={{ width: 11, height: 11, borderRadius: 3, background: lib.color(p.plant, p.fam), flexShrink: 0 }} />
                 <strong>{p.plant}</strong>{p.variety ? ` (${p.variety})` : ""}
                 <span style={{ color: C.muted }}>· {n} sq ≈ {m2} m²{planned ? ` · planned ${fmtDate(p.planted)}` : ""}</span>
