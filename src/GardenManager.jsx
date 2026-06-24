@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -111,8 +111,8 @@ const shiftMonths = (arr, s) => (arr || []).map((m) => ((m - 1 + s) % 12) + 1);
 // veg: sow months for Glenbrook, spacing(cm), sun, days-to-harvest(d), note
 const VEG = [
   { name:"Tomato", fam:"solanaceae", sow:[9,10,11,12], spacing:50, sun:"Full sun", d:80, note:"Start under cover Aug–Sep; plant out after frost (Oct). Stake & de-lateral.", tasks:[{name:"Liquid feed",months:[11,12,1,2]},{name:"Remove laterals",months:[11,12,1]}] },
-  { name:"Capsicum", fam:"solanaceae", sow:[10,11,12], spacing:45, sun:"Full sun", d:90, note:"Loves a sheltered sunny corner. Slow to start." },
-  { name:"Chilli", fam:"solanaceae", sow:[10,11,12], spacing:40, sun:"Full sun", d:100, note:"Heat-hungry; great in a pot against a warm wall." },
+  { name:"Capsicum", fam:"solanaceae", sow:[10,11,12], spacing:45, sun:"Full sun", d:90, hmode:"months", hmon:[1,2,3,4,5], note:"Loves a sheltered sunny corner. Slow to start, then picks for months." },
+  { name:"Chilli", fam:"solanaceae", sow:[10,11,12], spacing:40, sun:"Full sun", d:100, hmode:"months", hmon:[1,2,3,4,5], note:"Heat-hungry; great in a pot against a warm wall. Picks over a long season." },
   { name:"Eggplant", fam:"solanaceae", sow:[10,11,12], spacing:50, sun:"Full sun", d:90, note:"Needs a long warm spell — your hottest spot." },
   { name:"Potato", fam:"solanaceae", sow:[8,9,10,11,12], spacing:35, sun:"Full sun", d:100, note:"Plant after last frost; mound soil as they grow.", tasks:[{name:"Mound up soil",months:[10,11]}] },
   { name:"Courgette", fam:"cucurbitaceae", sow:[10,11,12,1], spacing:90, sun:"Full sun", d:50, note:"Wildly productive — two plants feed a family. Pick young." },
@@ -137,7 +137,7 @@ const VEG = [
   { name:"Parsnip", fam:"apiaceae", sow:[9,10,11,12], spacing:8, sun:"Full sun", d:120, note:"Slow to germinate; sweetens with winter cold." },
   { name:"Celery", fam:"apiaceae", sow:[9,10,11], spacing:25, sun:"Part sun", d:100, note:"Thirsty — never let it dry out." },
   { name:"Beetroot", fam:"amaranthaceae", sow:[1,2,3,8,9,10,11,12], spacing:10, sun:"Full sun", d:60, note:"Easy; the leaves are good eating too." },
-  { name:"Silverbeet", fam:"amaranthaceae", sow:[2,3,4,8,9,10,11], spacing:30, sun:"Part–full sun", d:55, note:"Near year-round here; pick outer leaves and it keeps giving." },
+  { name:"Silverbeet", fam:"amaranthaceae", sow:[2,3,4,8,9,10,11], spacing:30, sun:"Part–full sun", d:55, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Near year-round here; pick outer leaves and it keeps giving." },
   { name:"Spinach", fam:"amaranthaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Prefers cool months; bolts in heat." },
   { name:"Onion", fam:"amaryllidaceae", sow:[4,5,6,7], spacing:10, sun:"Full sun", d:150, note:"Long-day types from seed in autumn–winter for summer bulbs." },
   { name:"Garlic", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:210, note:"Tradition: plant by the shortest day, lift by the longest.", tasks:[{name:"Stop watering",months:[11]},{name:"Lift & dry bulbs",months:[12]}] },
@@ -145,18 +145,18 @@ const VEG = [
   { name:"Spring onion", fam:"amaryllidaceae", sow:[2,3,4,8,9,10,11], spacing:5, sun:"Full–part sun", d:60, note:"Quick & forgiving; sow in clumps." },
   { name:"Shallot", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:150, note:"Plant winter, harvest summer — garlic's milder cousin." },
   { name:"Kūmara", fam:"convolvulaceae", sow:[10,11], spacing:35, sun:"Full sun", d:150, note:"Plant tupu once soil warms; needs a long warm summer." },
-  { name:"Basil", fam:"lamiaceae", sow:[10,11,12,1], spacing:25, sun:"Full sun", d:40, note:"Warmth only — sulks in cold. Pinch tips to bush out." },
-  { name:"Coriander", fam:"lamiaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Bolts in heat; sow in cooler months for leaf." },
-  { name:"Parsley", fam:"apiaceae", sow:[2,3,9,10,11], spacing:20, sun:"Part–full sun", d:70, note:"Slow to start but a long, generous cropper." },
-  { name:"Mint", fam:"lamiaceae", sow:[9,10,11,12,1,2], spacing:30, sun:"Part–full sun", d:60, note:"Vigorous perennial — contain it in a pot or it takes over. Cut often." },
-  { name:"Thyme", fam:"lamiaceae", sow:[9,10,11], spacing:25, sun:"Full sun", d:90, note:"Woody perennial; loves dry, sunny spots. Trim after flowering." },
-  { name:"Oregano / Marjoram", fam:"lamiaceae", sow:[9,10,11], spacing:30, sun:"Full sun", d:80, note:"Heat-loving perennial; flavour intensifies in a lean, sunny bed." },
-  { name:"Rosemary", fam:"lamiaceae", sow:[9,10,11], spacing:60, sun:"Full sun", d:180, note:"Shrubby perennial — easiest from a cutting. Drought-hardy once set." },
-  { name:"Sage", fam:"lamiaceae", sow:[9,10,11], spacing:45, sun:"Full sun", d:90, note:"Perennial; trim to keep bushy. Dislikes wet feet." },
+  { name:"Basil", fam:"lamiaceae", sow:[10,11,12,1], spacing:25, sun:"Full sun", d:40, hmode:"months", hmon:[12,1,2,3,4], note:"Warmth only — sulks in cold. Pinch tips to bush out." },
+  { name:"Coriander", fam:"lamiaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, hmode:"months", hmon:[4,5,6,7,8,9,10], note:"Bolts in heat; sow in cooler months for leaf." },
+  { name:"Parsley", fam:"apiaceae", sow:[2,3,9,10,11], spacing:20, sun:"Part–full sun", d:70, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Slow to start but a long, generous cropper." },
+  { name:"Mint", fam:"lamiaceae", sow:[9,10,11,12,1,2], spacing:30, sun:"Part–full sun", d:60, hmode:"months", hmon:[9,10,11,12,1,2,3,4,5], note:"Vigorous perennial — contain it in a pot or it takes over. Cut often." },
+  { name:"Thyme", fam:"lamiaceae", sow:[9,10,11], spacing:25, sun:"Full sun", d:90, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Woody perennial; loves dry, sunny spots. Trim after flowering." },
+  { name:"Oregano / Marjoram", fam:"lamiaceae", sow:[9,10,11], spacing:30, sun:"Full sun", d:80, hmode:"months", hmon:[11,12,1,2,3,4], note:"Heat-loving perennial; flavour intensifies in a lean, sunny bed." },
+  { name:"Rosemary", fam:"lamiaceae", sow:[9,10,11], spacing:60, sun:"Full sun", d:180, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Shrubby perennial — easiest from a cutting. Drought-hardy once set." },
+  { name:"Sage", fam:"lamiaceae", sow:[9,10,11], spacing:45, sun:"Full sun", d:90, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Perennial; trim to keep bushy. Dislikes wet feet." },
   { name:"Tarragon", fam:"asteraceae", sow:[9,10], spacing:45, sun:"Full–part sun", d:90, note:"French tarragon from division/cuttings — seed-grown is the bland Russian kind." },
-  { name:"Dill", fam:"apiaceae", sow:[9,10,11,1,2], spacing:20, sun:"Full sun", d:60, note:"Bolts quickly — sow a little, often. Good by carrots & beans." },
+  { name:"Dill", fam:"apiaceae", sow:[9,10,11,1,2], spacing:20, sun:"Full sun", d:60, hmode:"months", hmon:[11,12,1,2,3], note:"Bolts quickly — sow a little, often. Good by carrots & beans." },
   { name:"Fennel (Florence)", fam:"apiaceae", sow:[9,10,11,1,2], spacing:30, sun:"Full sun", d:90, note:"Swelling bulbs from autumn sowings; keep moist or it bolts." },
-  { name:"Chives", fam:"amaryllidaceae", sow:[8,9,10,11], spacing:15, sun:"Full–part sun", d:80, note:"Clumping perennial; snip outer leaves and it keeps coming." },
+  { name:"Chives", fam:"amaryllidaceae", sow:[8,9,10,11], spacing:15, sun:"Full–part sun", d:80, hmode:"months", hmon:[9,10,11,12,1,2,3,4,5], note:"Clumping perennial; snip outer leaves and it keeps coming." },
   { name:"Rhubarb", fam:"polygonaceae", sow:[6,7,8], spacing:90, sun:"Full–part sun", d:365, note:"Plant crowns in winter; don't harvest the first year. Never eat the leaves." },
   { name:"Asparagus", fam:"asparagaceae", sow:[7,8,9], spacing:40, sun:"Full sun", d:730, note:"Plant crowns into a permanent bed; wait two years before cropping — then decades of spears." },
   { name:"Globe artichoke", fam:"asteraceae", sow:[8,9,10], spacing:90, sun:"Full sun", d:180, note:"Big handsome perennial; harvest the buds before they open." },
@@ -378,9 +378,10 @@ function buildLibrary(data) {
     if (Array.isArray(merged.tasks)) merged.tasks = merged.tasks.map((t) => ({ ...t, months: shiftMonths(t.months, shift) }));
     if (Array.isArray(merged.varieties)) merged.varieties = merged.varieties.map((v) => v.hmon ? { ...v, hmon: shiftMonths(v.hmon, shift) } : v);
     return merged; };
-  const veg = [...VEG, ...(cp.veg || [])].map((p) => apply(p, "veg"));
-  const fruit = [...FRUIT, ...(cp.fruit || [])].map((p) => apply(p, "fruit"));
-  const berry = [...BERRY, ...(cp.berry || [])].map((p) => apply(p, "berry"));
+  const dedupe = (arr) => { const m = {}; arr.forEach((p) => { m[p.name] = m[p.name] ? { ...m[p.name], ...p } : p; }); return Object.values(m); };
+  const veg = dedupe([...VEG, ...(cp.veg || [])]).map((p) => apply(p, "veg"));
+  const fruit = dedupe([...FRUIT, ...(cp.fruit || [])]).map((p) => apply(p, "fruit"));
+  const berry = dedupe([...BERRY, ...(cp.berry || [])]).map((p) => apply(p, "berry"));
   const byName = {}; [...veg, ...fruit, ...berry].forEach((p) => { if (!byName[p.name]) byName[p.name] = p; });
   return { veg, fruit, berry, byName,
     vegByName: (n) => byName[n] || veg.find((x) => x.name === n),
@@ -611,6 +612,9 @@ export default function GardenManager() {
   const pushTimer = useRef(null);
   const saveTimer = useRef(null);    // debounce local writes (drags fire many updates)
   const latestRef = useRef(null);    // most recent payload, for flush-on-hide
+  const undo = useRef({ stack: [], baseline: null, timer: null });
+  const undoingRef = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
   const [sync, setSync] = useState({ state: "idle", at: null }); // idle|syncing|synced|error
 
   // pull remote and decide which side wins — with strong guards so a blank or
@@ -660,6 +664,29 @@ export default function GardenManager() {
       }, 900);
     }
   }, [data, loaded]);
+
+  // coarse undo: snapshot the pre-change state at action boundaries (debounced so a drag is one step)
+  useEffect(() => {
+    if (!loaded) return;
+    const u = undo.current;
+    if (undoingRef.current) { undoingRef.current = false; u.baseline = JSON.stringify(data); return; }
+    if (u.baseline === null) { u.baseline = JSON.stringify(data); return; }
+    clearTimeout(u.timer);
+    u.timer = setTimeout(() => {
+      const cur = JSON.stringify(data);
+      if (cur !== u.baseline) { u.stack.push(u.baseline); if (u.stack.length > 25) u.stack.shift(); u.baseline = cur; setCanUndo(true); }
+    }, 800);
+  }, [data, loaded]);
+  const doUndo = () => {
+    const u = undo.current;
+    if (!u.stack.length) return;
+    clearTimeout(u.timer);
+    const prev = u.stack.pop();
+    undoingRef.current = true;
+    setData(JSON.parse(prev));
+    setSel(null);
+    setCanUndo(u.stack.length > 0);
+  };
 
   // make sure the latest edit is written if the tab is hidden or closed mid-debounce
   useEffect(() => {
@@ -711,6 +738,7 @@ export default function GardenManager() {
               style={{ fontFamily: display, fontSize: 22, fontWeight: 600, background: "transparent", border: "none", color: "#F4F1E6", width: "100%", outline: "none" }} />
             <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()}</div>
           </div>
+          <button onClick={doUndo} disabled={!canUndo} title="Undo last change" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: canUndo ? "pointer" : "default", color: "#F1EEE2", opacity: canUndo ? 1 : .4, display: "inline-flex" }}><Undo2 size={18} /></button>
           <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex" }}><Settings size={18} /></button>
         </div>
         {cloud?.session && <div style={{ fontSize: 11, color: C.sageSoft, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
@@ -770,8 +798,10 @@ function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
   });
   const today = dayKey(new Date());
   const all = days.concat(markers.map((m) => m.day));
-  const min = Math.min(today - 90, all.length ? Math.min(...all) : today);
-  const max = Math.max(today + 120, all.length ? Math.max(...all) : today);
+  const earliest = all.length ? Math.min(...all) : today;
+  const latest = all.length ? Math.max(...all) : today;
+  const min = Math.max(today - 540, Math.min(today - 90, earliest));
+  const max = Math.min(today + 540, Math.max(today + 120, latest));
   const cur = clamp(dayKey(viewDate), min, max);
   const isToday = dayKey(viewDate) === today;
   const pos = (d) => ((clamp(d, min, max) - min) / (max - min || 1)) * 100;
@@ -804,6 +834,75 @@ const visibleAt = (item, viewDate) => {
   if (item.removed && new Date(item.removed) < viewDate) return false;
   return true;
 };
+
+// growth stage of a planted veg cell at a given date
+const STAGE = {
+  planned:  { label: "Planned",       color: "#B7C6AE" },
+  seed:     { label: "Just sown",     color: "#B08C63" },
+  seedling: { label: "Seedling",      color: "#9FC18C" },
+  growing:  { label: "Growing",       color: "#5E8A5A" },
+  ready:    { label: "Ready to pick", color: C.harvest },
+  done:     { label: "Past / spent",  color: "#9A9486" },
+};
+function cropStage(cell, meta, viewDate) {
+  if (!cell.planted) return "growing";
+  const planted = new Date(cell.planted);
+  if (planted > viewDate) return "planned";
+  if (cell.removed && new Date(cell.removed) <= viewDate) return "done";
+  if (meta?.hmode === "months") {
+    const vrt = (meta.varieties || []).find((v) => v.name === cell.variety);
+    const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
+    return hmon.includes(viewDate.getMonth() + 1) ? "ready" : "growing";
+  }
+  const vrt = (meta?.varieties || []).find((v) => v.name === cell.variety);
+  const d = (vrt?.d || meta?.d || 60);
+  const frac = ((viewDate - planted) / 86400000) / d;
+  if (frac < 0.12) return "seed";
+  if (frac < 0.45) return "seedling";
+  if (frac < 1) return "growing";
+  return "ready";
+}
+
+// --- fine 0.25 m planting grid (the new bed model) ----------------
+// derive the square grid for a bed from its real size and chosen square (default 0.25 m)
+function bedFineGrid(bed, real) {
+  const sq = bed.sq || 0.25;
+  const cols = bed.cols || 4, rows = bed.rows || 3;
+  let gw = cols, gh = rows, metres = false;
+  if (real?.w && real?.l) { gw = clamp(Math.round(real.w / sq), 1, 80); gh = clamp(Math.round(real.l / sq), 1, 80); metres = true; }
+  return { gw, gh, sq, cols, rows, metres };
+}
+// migrate the old one-crop-per-cell layout into grouped plantings on the fine grid.
+// cells that share crop + variety + planted + cleared dates become a single planting that owns a set of squares.
+function cellsToPlantings(bed, grid) {
+  const { gw, gh, cols, rows } = grid;
+  const groups = {};
+  (bed.cells || []).forEach((c) => {
+    if (!c.plant) return;
+    const key = `${c.plant}|${c.variety || ""}|${c.planted || ""}|${c.removed || ""}`;
+    if (!groups[key]) groups[key] = { id: c.id, plant: c.plant, fam: c.fam, variety: c.variety || null, planted: c.planted || null, removed: c.removed || null, ferts: [], notes: c.notes || "", prevId: c.prevId || null, sown: c.sown || null, cells: [] };
+    const g = groups[key];
+    if (c.ferts) g.ferts = g.ferts.concat(c.ferts);
+    const x0 = Math.floor((c.c || 0) * gw / cols), x1 = Math.max(x0 + 1, Math.floor(((c.c || 0) + 1) * gw / cols));
+    const y0 = Math.floor((c.r || 0) * gh / rows), y1 = Math.max(y0 + 1, Math.floor(((c.r || 0) + 1) * gh / rows));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) g.cells.push({ x, y, removed: c.removed || null });
+  });
+  return Object.values(groups);
+}
+// for each square, which planting (if any) is live at viewDate — latest planted wins
+function squareOwners(plantings, grid, viewDate) {
+  const owner = {}; const plantedAt = {};
+  plantings.forEach((p) => {
+    const visible = (!p.planted || new Date(p.planted) <= viewDate);
+    p.cells.forEach((sqc) => {
+      if (p.planted && new Date(p.planted) > viewDate) return;
+      if (sqc.removed && new Date(sqc.removed) < viewDate) return;
+      const k = sqc.y * grid.gw + sqc.x; const pk = p.planted ? new Date(p.planted).getTime() : 0;
+      if (owner[k] === undefined || pk >= plantedAt[k]) { owner[k] = p; plantedAt[k] = pk; }
+    });
+  });
+  return owner;
+}
 
 // ===================== property / sections ========================
 function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }) {
@@ -1269,6 +1368,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const lib = useLib();
   const [paint, setPaint] = useState(null); // a crop selected for filling cells
   const [showPalette, setShowPalette] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [hover, setHover] = useState(null);
   const [palQ, setPalQ] = useState("");
   const greenhouse = section.kind === "greenhouse";
@@ -1278,6 +1378,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const sectionReal = realOf(section.w, section.h, data.dimM);
   const bedReal = realOf(bed.w, bed.h, sectionReal);
   const mapW = MAP_W[bed.mapSize || section.mapSize || data.mapSize] || MAP_W.medium;
+  const byStage = data.colourBy === "stage";
 
   const cellAt = (r, c) => { const m = (bed.cells || []).filter((x) => x.r === r && x.c === c && visibleAt(x, viewDate));
     return m.length ? m.sort((a, b) => new Date(b.planted) - new Date(a.planted))[0] : null; };
@@ -1373,6 +1474,14 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
               <button key={v} onClick={() => patchBed({ mapSize: v })} title={v} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
             {bed.mapSize && <button onClick={() => patchBed({ mapSize: null })} style={linkBtn}>match area</button>}
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Colour by:</span>
+            {[["crop", "Crop"], ["stage", "Growth stage"]].map(([v, lab]) => { const cur = (data.colourBy || "crop") === v; return (
+              <button key={v} onClick={() => setData((d) => ({ ...d, colourBy: v }))} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
+          </div>
+          {byStage && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {["seed", "seedling", "growing", "ready"].map((k) => <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.muted }}><span style={{ width: 11, height: 11, borderRadius: 3, background: STAGE[k].color }} />{STAGE[k].label}</span>)}
+          </div>}
 
           {/* palette */}
           <div style={{ marginBottom: 10 }}>
@@ -1438,16 +1547,52 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: 4, background: C.soil, padding: 6, borderRadius: 10, aspectRatio: bedReal ? `${bedReal.w} / ${bedReal.l}` : (bed.dimM?.w && bed.dimM?.l) ? `${bed.dimM.w} / ${bed.dimM.l}` : `${cols} / ${rows}` }}>
             {Array.from({ length: rows * cols }).map((_, i) => {
               const r = Math.floor(i / cols), c = i % cols; const cell = cellAt(r, c);
-              const col = cell ? lib.color(cell.plant, cell.fam) : null;
               const planned = cell && new Date(cell.planted) > now;
+              const stage = cell && byStage ? cropStage(cell, lib.vegByName(cell.plant), viewDate) : null;
+              const col = cell ? (stage ? STAGE[stage].color : lib.color(cell.plant, cell.fam)) : null;
               return (
-                <button key={i} onClick={() => setCell(r, c)}
+                <button key={i} onClick={() => setCell(r, c)} title={cell && stage ? STAGE[stage].label : undefined}
                   style={{ border: cell ? `${planned ? "2px dashed " + C.harvest : "1px solid " + col}` : `1px dashed ${hexA("#FFFFFF", .4)}`, borderRadius: 5, cursor: "pointer", background: cell ? hexA(col, planned ? .5 : .85) : hexA("#FBFAF4", .15), color: "#fff", fontSize: 10.5, fontWeight: 600, padding: 2, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", lineHeight: 1.1, minHeight: 30, textShadow: "0 1px 2px rgba(0,0,0,.5)", overflow: "hidden" }}>
                   {cell ? cell.plant : ""}
                 </button>);
             })}
           </div>
           <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Click an empty cell to choose a crop, or a planted one for its details. Dashed amber = a planned future planting.</p>
+
+          {/* ---- NEW fine-grid model: read-only migration preview (Stage 1) ---- */}
+          {(bed.cells || []).length > 0 && (() => {
+            const grid = bedFineGrid(bed, bedReal);
+            const plantings = cellsToPlantings(bed, grid);
+            const owners = squareOwners(plantings, grid, viewDate);
+            const counts = plantings.map((p) => ({ p, n: p.cells.length })).sort((a, b) => b.n - a.n);
+            return (
+              <div style={{ marginTop: 12, border: `1px dashed ${C.sage}`, borderRadius: 10, background: hexA(C.sage, .06), padding: 11 }}>
+                <button onClick={() => setShowPreview(!showPreview)} style={{ ...linkBtn, fontWeight: 600, fontSize: 13 }}>
+                  {showPreview ? "▾" : "▸"} New planting grid — preview ({grid.gw}×{grid.gh} squares of {grid.sq} m{grid.metres ? "" : ", set bed size for real 0.25 m squares"})
+                </button>
+                {showPreview && <>
+                  <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, margin: "7px 0" }}>This is how your bed converts to the new model, where a planting owns a group of squares (any shape) and each square can be cleared on its own. It's read-only for now — your bed above still works as usual. Just checking the conversion looks right before I make this the editable grid.</p>
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: 1.5, background: C.soil, padding: 5, borderRadius: 8, aspectRatio: `${grid.gw} / ${grid.gh}`, maxWidth: mapW }}>
+                    {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
+                      const x = i % grid.gw, y = Math.floor(i / grid.gw); const p = owners[y * grid.gw + x];
+                      if (!p) return <div key={i} style={{ background: hexA("#FBFAF4", .12), borderRadius: 2 }} />;
+                      const stage = byStage ? cropStage(p, lib.vegByName(p.plant), viewDate) : null;
+                      const col = stage ? STAGE[stage].color : lib.color(p.plant, p.fam);
+                      return <div key={i} title={`${p.plant}${stage ? " · " + STAGE[stage].label : ""}`} style={{ background: hexA(col, .9), borderRadius: 2 }} />;
+                    })}
+                  </div>
+                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {counts.map(({ p, n }, i) => (
+                      <div key={i} style={{ fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{ width: 11, height: 11, borderRadius: 3, background: lib.color(p.plant, p.fam), flexShrink: 0 }} />
+                        <strong>{p.plant}</strong>{p.variety ? ` (${p.variety})` : ""}
+                        <span style={{ color: C.muted }}>· {n} square{n === 1 ? "" : "s"} ≈ {(n * grid.sq * grid.sq).toFixed(2)} m²{p.planted ? ` · planted ${fmtDate(p.planted)}` : ""}{p.removed ? ` · cleared ${fmtDate(p.removed)}` : ""}</span>
+                      </div>))}
+                    {counts.length === 0 && <span style={{ fontSize: 12, color: C.muted }}>Nothing planted to convert.</span>}
+                  </div>
+                </>}
+              </div>);
+          })()}
 
           <textarea value={bed.notes} placeholder="Bed notes — soil, sun, what did well…" onChange={(e) => patchBed({ notes: e.target.value })}
             style={{ width: "100%", marginTop: 10, minHeight: 48, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
@@ -1483,10 +1628,14 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
 
   const varieties = meta?.varieties || [];
   const selVar = varieties.find((v) => v.name === item.variety);
-  const effD = (kind === "veg") ? (selVar?.d || meta?.d) : null;
+  const monthMode = kind === "veg" && meta?.hmode === "months";
+  const effD = (kind === "veg" && !monthMode) ? (selVar?.d || meta?.d) : null;
+  const effHmon = monthMode ? ((selVar?.hmon?.length ? selVar.hmon : meta?.hmon) || []) : null;
   const effHmonLabel = (kind !== "veg" && selVar?.hmon?.length) ? selVar.hmon.map((m) => MONTHS[m - 1]).join("–") : null;
+  const curMonth = new Date().getMonth() + 1;
 
   const harvest = (() => {
+    if (monthMode && effHmon.length) return `Pick ${effHmon.map((m) => MONTHS[m - 1]).join(", ")}${effHmon.includes(curMonth) ? " — in season now" : ""}`;
     if (kind === "veg" && effD && item.planted) return `~${fmtDate(addDays(item.planted, effD))} (≈${effD} days${selVar ? `, ${selVar.name}` : ""})`;
     if (effHmonLabel) return `${effHmonLabel}${selVar ? ` (${selVar.name})` : ""}`;
     if (meta?.harvest) return meta.harvest;
@@ -1734,10 +1883,15 @@ function DoNowView({ data, month, hemi = "south", display, setTab, setNav, setSe
       const meta = lib.vegByName(c.plant);
       const active = c.planted && new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
-      const dd = vrt?.d || meta?.d;
-      if (dd && c.planted) {
-        const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
-        if (active && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
+      if (meta?.hmode === "months") {
+        const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
+        if (active && (hmon.includes(month) || hmon.includes(nextMonth))) { const ready = hmon.includes(month);
+          harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: ready ? tk : tk + 30, label: ready ? "ready now" : `from ${MONTHS[nextMonth - 1]}`, go }); }
+      } else { const dd = vrt?.d || meta?.d;
+        if (dd && c.planted) {
+          const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
+          if (active && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
+        }
       }
       if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), go }); });
     }));
@@ -2004,12 +2158,12 @@ function PlantEditor({ type, plant, data, setData, close }) {
   const isNew = !plant;
   const lib = useLib();
   const [f, setF] = useState(() => isNew
-    ? { name: "", fam: "asteraceae", sow: [], spacing: 30, sun: "Full sun", d: 60, note: "", varieties: [], color: SWATCHES[0], group: "", plant: "", harvest: "", hmon: [], prune: "", feed: "", icon: "bush", tasks: [], availableIn: [] }
-    : { name: plant.name, fam: plant.fam || "asteraceae", sow: plant.sow || [], spacing: plant.spacing || 30, sun: plant.sun || "Full sun", d: plant.d || 60, note: plant.note || "", varieties: varList(plant.varieties).map((v) => ({ name: v.name, d: v.d ?? "", hmon: [...(v.hmon || [])], note: v.note || "" })), color: plant.color, group: plant.group || "", plant: plant.plant || "", harvest: plant.harvest || "", hmon: plant.hmon || [], prune: plant.prune || "", feed: plant.feed || "", icon: plant.icon || "bush", tasks: (plant.tasks || []).map((t) => ({ name: t.name, months: [...(t.months || [])] })), availableIn: plant.availableIn || [] });
+    ? { name: "", fam: "asteraceae", sow: [], spacing: 30, sun: "Full sun", d: 60, hmode: "days", note: "", varieties: [], color: SWATCHES[0], group: "", plant: "", harvest: "", hmon: [], prune: "", feed: "", icon: "bush", tasks: [], availableIn: [] }
+    : { name: plant.name, fam: plant.fam || "asteraceae", sow: plant.sow || [], spacing: plant.spacing || 30, sun: plant.sun || "Full sun", d: plant.d || 60, hmode: plant.hmode || "days", note: plant.note || "", varieties: varList(plant.varieties).map((v) => ({ name: v.name, d: v.d ?? "", hmon: [...(v.hmon || [])], note: v.note || "" })), color: plant.color, group: plant.group || "", plant: plant.plant || "", harvest: plant.harvest || "", hmon: plant.hmon || [], prune: plant.prune || "", feed: plant.feed || "", icon: plant.icon || "bush", tasks: (plant.tasks || []).map((t) => ({ name: t.name, months: [...(t.months || [])] })), availableIn: plant.availableIn || [] });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const toggleAvail = (kind) => setF((s) => ({ ...s, availableIn: s.availableIn.includes(kind) ? s.availableIn.filter((x) => x !== kind) : [...s.availableIn, kind] }));
   const copyFrom = (name) => { if (!name) return; const p = lib.byName[name]; if (!p) return;
-    setF((s) => ({ ...s, fam: p.fam || s.fam, sow: [...(p.sow || [])], spacing: p.spacing || s.spacing, sun: p.sun || s.sun, d: p.d || s.d,
+    setF((s) => ({ ...s, fam: p.fam || s.fam, sow: [...(p.sow || [])], spacing: p.spacing || s.spacing, sun: p.sun || s.sun, d: p.d || s.d, hmode: p.hmode || "days",
       note: p.note || "", color: p.color || s.color, group: p.group || "", plant: p.plant || "", harvest: p.harvest || "", hmon: [...(p.hmon || [])],
       prune: p.prune || "", feed: p.feed || "", icon: p.icon || s.icon, availableIn: [...(p.availableIn || [])],
       tasks: (p.tasks || []).map((t) => ({ name: t.name, months: [...(t.months || [])] })),
@@ -2018,6 +2172,7 @@ function PlantEditor({ type, plant, data, setData, close }) {
     : type === "fruit" ? [["garden", "Vegetable garden"], ["greenhouse", "Greenhouse"], ["berry", "Berry patch"]]
     : [["garden", "Vegetable garden"], ["greenhouse", "Greenhouse"], ["orchard", "Orchard"]];
   const toggleMonth = (m) => setF((s) => ({ ...s, sow: s.sow.includes(m) ? s.sow.filter((x) => x !== m) : [...s.sow, m].sort((a, b) => a - b) }));
+  const toggleHmon = (m) => setF((s) => ({ ...s, hmon: s.hmon.includes(m) ? s.hmon.filter((x) => x !== m) : [...s.hmon, m].sort((a, b) => a - b) }));
   const toggleH = (m) => setF((s) => ({ ...s, hmon: s.hmon.includes(m) ? s.hmon.filter((x) => x !== m) : [...s.hmon, m].sort((a, b) => a - b) }));
   const addTask = () => setF((s) => ({ ...s, tasks: [...s.tasks, { name: "", months: [] }] }));
   const removeTask = (i) => setF((s) => ({ ...s, tasks: s.tasks.filter((_, j) => j !== i) }));
@@ -2040,12 +2195,12 @@ function PlantEditor({ type, plant, data, setData, close }) {
     if (isNew && !f.name.trim()) { alert("Give it a name first."); return; }
     if (isNew) {
       const base = { name: f.name.trim(), note: f.note, varieties: cleanVars(f.varieties), color: f.color, custom: true, tasks: cleanTasks(f.tasks), availableIn: f.availableIn };
-      const entry = type === "veg" ? { ...base, fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing) || 30, sun: f.sun, d: Number(f.d) || 60 }
+      const entry = type === "veg" ? { ...base, fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing) || 30, sun: f.sun, d: Number(f.d) || 60, hmode: f.hmode, hmon: f.hmode === "months" ? toCanonical(f.hmon) : undefined }
         : type === "fruit" ? { ...base, group: f.group || "Other", plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed }
         : { ...base, icon: f.icon, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed };
       setData((d) => ({ ...d, customPlants: { ...d.customPlants, [type]: [...(d.customPlants[type] || []), entry] } }));
     } else {
-      const e = type === "veg" ? clean({ fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing), sun: f.sun, d: Number(f.d), note: f.note, color: f.color, tasks: cleanTasks(f.tasks) })
+      const e = type === "veg" ? clean({ fam: f.fam, sow: toCanonical(f.sow), spacing: Number(f.spacing), sun: f.sun, d: Number(f.d), hmode: f.hmode, hmon: f.hmode === "months" ? toCanonical(f.hmon) : [], note: f.note, color: f.color, tasks: cleanTasks(f.tasks) })
         : type === "fruit" ? clean({ group: f.group, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed, note: f.note, color: f.color, tasks: cleanTasks(f.tasks) })
         : clean({ icon: f.icon, plant: f.plant, harvest: f.harvest, hmon: toCanonical(f.hmon), prune: f.prune, feed: f.feed, note: f.note, color: f.color, tasks: cleanTasks(f.tasks) });
       e.varieties = cleanVars(f.varieties); // always store (may be empty to clear)
@@ -2103,10 +2258,22 @@ function PlantEditor({ type, plant, data, setData, close }) {
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}><label style={lbl}>Spacing (cm)</label><input type="number" value={f.spacing} onChange={(e) => set("spacing", e.target.value)} style={inp} /></div>
-            <div style={{ flex: 1 }}><label style={lbl}>Days to harvest</label><input type="number" value={f.d} onChange={(e) => set("d", e.target.value)} style={inp} /></div>
+            <div style={{ flex: 1 }}><label style={lbl}>Sun</label><input value={f.sun} onChange={(e) => set("sun", e.target.value)} style={inp} placeholder="Full sun / Part sun" /></div>
           </div>
-          <label style={lbl}>Sun</label>
-          <input value={f.sun} onChange={(e) => set("sun", e.target.value)} style={inp} placeholder="Full sun / Part sun" />
+          <label style={lbl}>How it's harvested</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+            {[["days", "Days to harvest (one crop)"], ["months", "Picked over months (herbs, etc.)"]].map(([v, labl]) => { const on = f.hmode === v; return (
+              <button key={v} onClick={() => set("hmode", v)} style={{ ...chip, cursor: "pointer", flex: 1, textAlign: "center", padding: "6px 8px", background: on ? C.fern : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{labl}</button>); })}
+          </div>
+          {f.hmode === "months" ? (<>
+            <label style={lbl}>Pick in these months</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {MONTHS.map((m, i) => { const on = f.hmon.includes(i + 1); return (
+                <button key={m} onClick={() => toggleHmon(i + 1)} style={{ ...chip, cursor: "pointer", padding: "4px 9px", background: on ? f.color : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? f.color : C.line}` }}>{m}</button>); })}
+            </div>
+          </>) : (
+            <div><label style={lbl}>Days to harvest</label><input type="number" value={f.d} onChange={(e) => set("d", e.target.value)} style={inp} /></div>
+          )}
         </>}
 
         {type === "fruit" && <>
@@ -2391,9 +2558,11 @@ function ReportView({ data, setData, month, hemi, display }) {
       const meta = lib.vegByName(c.plant);
       const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
-      const dd = vrt?.d || meta?.d;
-      if (dd && c.planted) { const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
-        if (active && hk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days (${fmtDate(hISO)})` }); }
+      if (meta?.hmode === "months") { const sh = soonestHarvest(vrt?.hmon?.length ? vrt.hmon : meta.hmon);
+        if (active && sh && sh.dk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
+      else { const dd = vrt?.d || meta?.d;
+        if (dd && c.planted) { const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
+          if (active && hk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days (${fmtDate(hISO)})` }); } }
       if (active) (meta?.tasks || []).forEach((t) => { if (dueSoon(t.months) && !(c.doneTasks || []).includes(`${t.name}|${curYM}`)) addJob({ what: `${t.name} — ${c.plant}`, where: `${b.name} · ${s.name}`, detail: monthsLabel(t.months) }); });
       (c.ferts || []).forEach((f) => pushLog(f, c.plant, `${b.name} · ${s.name}`));
     }));
