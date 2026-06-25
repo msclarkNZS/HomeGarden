@@ -231,6 +231,8 @@ const SP_MIGRATE = { broiler: "chicken", layer: "chicken" };
 const CHICKEN_KLASS_FIX = { Hens: "Hen", Pullets: "Pullet", Broilers: "Broiler", Roosters: "Rooster", Chicks: "Chick" };
 const speciesFor = (kind) => Object.entries(SPECIES).filter(([, v]) => v.areas.includes(kind)).map(([k, v]) => ({ key: k, ...v }));
 const mobHead = (m) => (m && Array.isArray(m.individuals)) ? m.individuals.length : 0;
+const mobClassCounts = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
+  const order = SPECIES[m.species]?.classes || []; return Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99)).map((c) => ({ klass: c, n: counts[c] })); };
 // drop individualised mobs that have been emptied of animals, unless they carry whole-mob records
 const pruneEmptyMobs = (sections) => sections.map((s) => ({ ...s, mobs: (s.mobs || []).filter((m) => !(Array.isArray(m.individuals) && m.individuals.length === 0 && (m.ferts || []).length === 0 && (m.history || []).length === 0)) }));
 
@@ -339,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 82";
+const APP_BUILD = "2026-06-25 · build 84";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1754,8 +1756,6 @@ function AreaStock({ data, setData, section, display }) {
     setOpenAnimal(null); setSelMobId(newId); };
 
   const daysHere = (m) => Math.max(0, Math.round((Date.now() - new Date(m.placed).getTime()) / 86400000));
-  const classCounts = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
-    const order = SPECIES[m.species]?.classes || []; return Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99)).map((c) => ({ klass: c, n: counts[c] })); };
   const selMob = mobs.find((m) => m.id === selMobId) || null;
   const sp = selMob ? SPECIES[selMob.species] : null;
   const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t)) : [];
@@ -1826,7 +1826,7 @@ function AreaStock({ data, setData, section, display }) {
                   <span style={{ fontSize: 22 }}>{spm?.emoji || "🐾"}</span>
                   <span style={{ flex: 1 }}>
                     <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{m.name || spm?.label || "Mob"} · {mobHead(m)}</div>
-                    {(() => { const cc = classCounts(m); return cc.length ? (
+                    {(() => { const cc = mobClassCounts(m); return cc.length ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
                         {cc.map((x) => <span key={x.klass} style={{ ...chip, fontSize: 10.5, padding: "1px 7px", background: hexA(C.fern, .12), color: C.fernDk, border: "none" }}>{x.n} {x.klass}</span>)}
                         {m.breed && <span style={{ ...chip, fontSize: 10.5, padding: "1px 7px", background: hexA(C.soil, .14), color: C.soil, border: "none" }}>{m.breed}</span>}
@@ -2790,7 +2790,9 @@ function GrazingView({ data, display, setTab, setNav }) {
                 {occupied ? (
                   <div style={{ marginTop: 8 }}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: hexA(C.harvest, .14), color: C.ink, borderRadius: 999, padding: "3px 10px", fontSize: 12.5, fontWeight: 600 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: C.harvest }} /> Grazing now · {head} head</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 6 }}>{mobs.map((m) => `${mobHead(m)} ${m.klass}`).join(", ")}</div>
+                    {(() => { const counts = {}; mobs.forEach((m) => (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; }));
+                      const order = SPECIES[mobs[0]?.species]?.classes || []; const keys = Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
+                      return keys.length ? <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>{keys.map((c) => <span key={c} style={{ ...chip, fontSize: 10.5, padding: "1px 7px", background: hexA(C.fern, .12), color: C.fernDk, border: "none" }}>{counts[c]} {c}</span>)}</div> : null; })()}
                     <div style={{ fontSize: 12.5, color: grazeDays >= 5 ? C.beet : C.muted, marginTop: 4 }}>On here {grazeDays} day{grazeDays === 1 ? "" : "s"}{grazeDays >= 5 ? " — consider shifting them on soon." : "."}</div>
                   </div>
                 ) : (
@@ -2828,6 +2830,7 @@ function suggestRotation(bed, month, today, vegList = VEG) {
 function StockGuide({ data, setData, display, month }) {
   const stock = buildStock(data);
   const [open, setOpen] = useState(null);
+  const [newKlass, setNewKlass] = useState("");
   const edits = data.stockEdits || {};
 
   const writeEdit = (key, changes) => setData((d) => { const cur = (d.stockEdits || {})[key] || {}; const base = stock[key];
@@ -2837,6 +2840,8 @@ function StockGuide({ data, setData, display, month }) {
   const updateTask = (key, i, patch) => writeEdit(key, { tasks: tasksOf(key).map((t, idx) => idx === i ? { ...t, ...patch } : t) });
   const removeTask = (key, i) => writeEdit(key, { tasks: tasksOf(key).filter((_, idx) => idx !== i) });
   const setClasses = (key, arr) => writeEdit(key, { classes: arr });
+  const addClass = (key) => { const v = newKlass.trim(); if (!v) return; const cur = stock[key].classes; if (cur.some((c) => c.toLowerCase() === v.toLowerCase())) { setNewKlass(""); return; } setClasses(key, [...cur, v]); setNewKlass(""); };
+  const removeClass = (key, c) => { const cur = stock[key].classes; if (cur.length <= 1) return; setClasses(key, cur.filter((x) => x !== c)); };
   const resetSpecies = (key) => setData((d) => { const e = { ...(d.stockEdits || {}) }; delete e[key]; return { ...d, stockEdits: e }; });
   const toggleMonth = (key, i, m) => { const t = tasksOf(key)[i]; const months = (t.months || []).includes(m) ? t.months.filter((x) => x !== m) : [...(t.months || []), m].sort((a, b) => a - b); updateTask(key, i, { months }); };
 
@@ -2858,8 +2863,20 @@ function StockGuide({ data, setData, display, month }) {
 
             {isOpen && (
               <div style={{ marginTop: 12 }}>
-                <label style={lblS}>Mob classes (comma-separated)</label>
-                <input value={sp.classes.join(", ")} onChange={(e) => setClasses(sp.key, e.target.value.split(",").map((x) => x.trim()).filter(Boolean))} style={inpS} />
+                <label style={lblS}>Mob classes</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                  {sp.classes.map((c) => (
+                    <span key={c} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 6, background: hexA(C.fern, .1), color: C.fernDk, border: `1px solid ${hexA(C.fern, .25)}` }}>
+                      {c}
+                      {sp.classes.length > 1 && <button onClick={() => removeClass(sp.key, c)} title={`Remove ${c}`} style={{ cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1, color: C.muted, fontSize: 14 }}><X size={12} /></button>}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <input value={open === sp.key ? newKlass : ""} onChange={(e) => setNewKlass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addClass(sp.key); } }} placeholder="Add a class (e.g. Wether)" style={{ ...inpS, flex: 1 }} />
+                  <button onClick={() => addClass(sp.key)} style={{ ...btnOutline, padding: "8px 14px" }}><Plus size={14} style={{ verticalAlign: -2 }} /> Add</button>
+                </div>
+                <p style={{ fontSize: 11, color: C.muted, margin: "6px 0 0" }}>Classes are the life-stages/types you can assign to each animal (e.g. {sp.classes.slice(0, 3).join(", ")}).</p>
 
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: C.muted, margin: "14px 0 6px" }}>JOURNAL OPTIONS</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
