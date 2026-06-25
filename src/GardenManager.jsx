@@ -226,9 +226,10 @@ const SPECIES = {
   goat:    { label: "Goats",         emoji: "🐐", areas: ["paddock"], classes: ["Does", "Kids", "Wethers", "Buck"], log: ["health", "drench", "weight", "milk", "meat", "note"] },
   cattle:  { label: "Cattle",        emoji: "🐄", areas: ["paddock"], classes: ["Cows", "Calves", "Steers", "Heifers", "Bull"], log: ["health", "drench", "weight", "milk", "meat", "note"] },
   pig:     { label: "Pigs",          emoji: "🐖", areas: ["paddock"], classes: ["Sows", "Weaners", "Growers", "Boar"], log: ["health", "weight", "meat", "note"] },
-  broiler: { label: "Meat chickens", emoji: "🐔", areas: ["coop"],    classes: ["Broilers"], log: ["health", "weight", "meat", "note"] },
-  layer:   { label: "Layer hens",    emoji: "🥚", areas: ["coop"],    classes: ["Hens", "Pullets", "Rooster"], log: ["health", "eggs", "weight", "meat", "note"] },
+  chicken: { label: "Chickens",      emoji: "🐔", areas: ["coop"],    classes: ["Chick", "Pullet", "Hen", "Rooster", "Cockerel", "Broiler"], log: ["health", "weight", "eggs", "meat", "note"] },
 };
+const SP_MIGRATE = { broiler: "chicken", layer: "chicken" };
+const CHICKEN_KLASS_FIX = { Hens: "Hen", Pullets: "Pullet", Broilers: "Broiler", Roosters: "Rooster", Chicks: "Chick" };
 const speciesFor = (kind) => Object.entries(SPECIES).filter(([, v]) => v.areas.includes(kind)).map(([k, v]) => ({ key: k, ...v }));
 const individualised = (m) => !!(m && m.individuals && m.individuals.length);
 const mobHead = (m) => (m && Array.isArray(m.individuals)) ? m.individuals.length : (m && m.count != null ? m.count : 0);
@@ -260,12 +261,9 @@ const LIVESTOCK_TASKS = {
     { name: "Shade & wallow", mode: "calendar", months: [11, 12, 1, 2, 3], detail: "Pigs can't sweat — make sure of shade and a wallow through the summer heat." },
     { name: "Worm & condition check", mode: "interval", every: 6, unit: "months", detail: "Worm to a plan and check condition." },
   ],
-  broiler: [
-    { name: "Heat management", mode: "calendar", months: [12, 1, 2], detail: "Shade, cool water and airflow on hot days." },
-    { name: "Coop clean", mode: "interval", every: 2, unit: "weeks", detail: "Refresh bedding and clean out regularly." },
-  ],
-  layer: [
+  chicken: [
     { name: "Mite & coop check", mode: "interval", every: 4, unit: "weeks", detail: "Check for red mite and refresh bedding, more often in warm months." },
+    { name: "Coop clean", mode: "interval", every: 2, unit: "weeks", detail: "Refresh bedding and clean out regularly." },
     { name: "Heat management", mode: "calendar", months: [12, 1, 2], detail: "Shade, cool water and airflow on hot days." },
     { name: "Winter lay", mode: "calendar", months: [5, 6, 7], detail: "Laying slows with the short days — add light if you want eggs through winter." },
   ],
@@ -320,8 +318,15 @@ const STOCK_STATES = {
   goat:    ["In-kid", "Kidding", "Lame", "Unwell", "Bottle/orphan"],
   cattle:  ["In-calf", "Springer", "Calving", "Lame", "Unwell"],
   pig:     ["In-pig", "Farrowing", "Unwell"],
-  layer:   ["Clucky / broody", "Moulting", "Off-lay", "Unwell", "Isolated"],
-  broiler: ["Unwell", "Isolated"],
+  chicken: ["Clucky / broody", "Moulting", "Off-lay", "Unwell", "Isolated"],
+};
+// suggested breeds per species (free text — these just populate a picklist)
+const STOCK_BREEDS = {
+  sheep:   ["Romney", "Suffolk", "Wiltshire", "Perendale", "Coopworth", "Dorper", "East Friesian", "Texel"],
+  goat:    ["Boer", "Saanen", "Nubian", "Toggenburg", "Feral"],
+  cattle:  ["Angus", "Hereford", "Jersey", "Friesian", "Kiwicross", "Highland", "Dexter", "Belted Galloway"],
+  pig:     ["Kunekune", "Berkshire", "Large Black", "Tamworth", "Duroc"],
+  chicken: ["Brown Shaver", "Hyline Brown", "Plymouth Rock", "Orpington", "Wyandotte", "Leghorn", "Rhode Island Red", "Silkie", "Australorp"],
 };
 
 function sectionCountLabel(s) {
@@ -337,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 64";
+const APP_BUILD = "2026-06-25 · build 65";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -402,12 +407,15 @@ function normalize(d) {
       return { ...b, plantings: cellsToPlantings(b, grid), grid: { w: grid.gw, h: grid.gh }, sq: grid.sq };
     }),
     mobs: (s.mobs || []).map((m) => {
-      if (Array.isArray(m.individuals) && m.individuals.length) { const { count, ...rest } = m; return { ...rest, individuals: m.individuals }; }
-      const n = m.count || 0; const klass = m.klass || SPECIES[m.species]?.classes?.[0] || "Animal";
+      const species = SP_MIGRATE[m.species] || m.species; const fixK = (k) => species === "chicken" ? (CHICKEN_KLASS_FIX[k] || k) : k;
+      if (Array.isArray(m.individuals) && m.individuals.length) { const { count, ...rest } = m; return { ...rest, species, klass: fixK(m.klass), individuals: m.individuals.map((a) => ({ ...a, klass: fixK(a.klass) })) }; }
+      const n = m.count || 0; const klass = fixK(m.klass) || SPECIES[species]?.classes?.[0] || "Animal";
       const individuals = Array.from({ length: n }, (_, i) => ({ id: uid(), name: `${klass} ${i + 1}`, klass, born: "", notes: "", ferts: [] }));
-      const { count, ...rest } = m; return { ...rest, individuals };
+      const { count, ...rest } = m; return { ...rest, species, klass, individuals };
     }) };
   });
+  base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
+  if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = pruneEmptyMobs(base.sections);
   return base;
 }
@@ -855,6 +863,12 @@ export default function GardenManager() {
     const l = document.createElement("link"); l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Public+Sans:wght@400;500;600&display=swap";
     document.head.appendChild(l); return () => document.head.removeChild(l);
+  }, []);
+  useEffect(() => {
+    let m = document.querySelector("meta[name=viewport]"); const prev = m ? m.getAttribute("content") : null;
+    if (!m) { m = document.createElement("meta"); m.setAttribute("name", "viewport"); document.head.appendChild(m); }
+    m.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+    return () => { if (prev != null) m.setAttribute("content", prev); };
   }, []);
 
   const display = "'Fraunces', Georgia, serif";
@@ -1584,7 +1598,7 @@ function StockOverview({ data, setData, setTab, setNav, setSel, display }) {
   const splitAnimalNew = (sectionId, mobId, aId) => setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => { if (s.id !== sectionId) return s;
       const src = (s.mobs || []).find((m) => m.id === mobId); const a = (src?.individuals || []).find((x) => x.id === aId); if (!a) return s;
       const mobsList = (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) });
-      const nm = { id: uid(), species: src.species, klass: a.klass || src.klass, count: null, name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
+      const nm = { id: uid(), species: src.species, klass: a.klass || src.klass, breed: src.breed || a.breed || "", name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
       return { ...s, mobs: [...mobsList, nm] }; })) }));
   const openMob = (sectionId, mobId) => { setSel(null); setTab("map"); setNav({ level: "section", sectionId, bedId: null }); setTimeout(() => setSel({ kind: "mob", sectionId, id: mobId }), 0); };
 
@@ -1653,26 +1667,26 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const KindIcon = k.icon;
   const mobs = section.mobs || [];
   const [adding, setAdding] = useState(false);
-  const [log, setLog] = useState({ type: "health", what: "", qty: "" });
+  const [log, setLog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [openAnimal, setOpenAnimal] = useState(null);
-  const [aLog, setALog] = useState({ type: "health", what: "", qty: "" });
+  const [aLog, setALog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [bulkN, setBulkN] = useState("1");
   const choices = speciesFor(section.kind);
-  const [f, setF] = useState(() => ({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "" }));
+  const [f, setF] = useState(() => ({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" }));
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
   const patchMob = (id, p) => patchSection({ mobs: mobs.map((m) => m.id === id ? { ...m, ...p } : m) });
   const removeMob = (id) => { patchSection({ mobs: mobs.filter((m) => m.id !== id) }); setSel(null); };
-  const addMob = () => { const sp = SPECIES[f.species]; if (!sp) return; const klass = f.klass || sp.classes[0]; const n = f.count === "" ? 0 : Math.max(0, Number(f.count) || 0);
-    const individuals = Array.from({ length: n }, (_, i) => ({ id: uid(), name: `${klass} ${i + 1}`, klass, born: "", notes: "", ferts: [] }));
-    const m = { id: uid(), species: f.species, klass, name: f.name.trim(), placed: todayISO(), notes: "", ferts: [], history: [], individuals };
-    patchSection({ mobs: [...mobs, m] }); setAdding(false); setF({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "" });
+  const addMob = () => { const sp = SPECIES[f.species]; if (!sp) return; const klass = f.klass || sp.classes[0]; const n = f.count === "" ? 0 : Math.max(0, Number(f.count) || 0); const breed = f.breed.trim();
+    const individuals = Array.from({ length: n }, (_, i) => ({ id: uid(), name: `${klass} ${i + 1}`, klass, breed, born: "", notes: "", ferts: [] }));
+    const m = { id: uid(), species: f.species, klass, breed, name: f.name.trim(), placed: todayISO(), notes: "", ferts: [], history: [], individuals };
+    patchSection({ mobs: [...mobs, m] }); setAdding(false); setF({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" });
     setSel({ kind: "mob", sectionId: section.id, id: m.id }); };
   const addIndividuals = (mobId, n) => { const num = Math.max(1, Number(n) || 1); patchSection({ mobs: mobs.map((m) => { if (m.id !== mobId) return m; const list = m.individuals || []; const klass = m.klass;
-      const extra = Array.from({ length: num }, (_, i) => ({ id: uid(), name: `${klass} ${list.length + i + 1}`, klass, born: "", notes: "", ferts: [] }));
+      const extra = Array.from({ length: num }, (_, i) => ({ id: uid(), name: `${klass} ${list.length + i + 1}`, klass, breed: m.breed || "", born: "", notes: "", ferts: [] }));
       return { ...m, individuals: [...list, ...extra] }; }) }); };
-  const applyMobTreatment = (mobId, type, what, reset) => { const batch = uid(); const w = (what || "").trim();
-    setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => ({ ...a, ferts: [...(a.ferts || []), { id: uid(), date: todayISO(), type, what: w, batch }] })) }) }) }));
+  const applyMobTreatment = (mobId, type, what, reset, date) => { const batch = uid(); const w = (what || "").trim(); const dt = date || todayISO();
+    setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => ({ ...a, ferts: [...(a.ferts || []), { id: uid(), date: dt, type, what: w, batch }] })) }) }) }));
     reset && reset(); };
   const removeBatch = (mobId, batch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => ({ ...a, ferts: (a.ferts || []).filter((f) => f.batch !== batch) })) }) }) }));
   const toggleState = (mobId, aId, st) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => { if (a.id !== aId) return a; const cur = a.states || []; return { ...a, states: cur.includes(st) ? cur.filter((x) => x !== st) : [...cur, st] }; }) }) }) }));
@@ -1680,8 +1694,8 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
       if (s.id === section.id) return { ...s, mobs: (s.mobs || []).filter((m) => m.id !== mob.id) };
       if (s.id === toId) { const moved = { ...mob, placed: todayISO(), history: [...(mob.history || []), { sectionId: section.id, in: mob.placed, out: todayISO() }] }; return { ...s, mobs: [...(s.mobs || []), moved] }; }
       return s; }) })); setSel(null); };
-  const pushEntry = (mobId, animalId, type, whatRaw, qtyRaw, reset) => { const spec = STOCK_LOG[type] || {};
-    const e = { id: uid(), date: todayISO(), type, what: (whatRaw || "").trim(), qty: qtyRaw === "" ? null : Number(qtyRaw), unit: spec.unit };
+  const pushEntry = (mobId, animalId, type, whatRaw, qtyRaw, reset, date) => { const spec = STOCK_LOG[type] || {};
+    const e = { id: uid(), date: date || todayISO(), type, what: (whatRaw || "").trim(), qty: qtyRaw === "" ? null : Number(qtyRaw), unit: spec.unit };
     if (!e.what && e.qty == null) return;
     setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
       if (m.id !== mobId) return m;
@@ -1696,7 +1710,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
       if (animalId) return { ...m, individuals: (m.individuals || []).map((a) => a.id !== animalId ? a : { ...a, ferts: (a.ferts || []).filter((f) => f.id !== id) }) };
       return { ...m, ferts: (m.ferts || []).filter((f) => f.id !== id) }; }) }) }));
   const addIndividual = (mobId) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
-      if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id: uid(), name: `${m.klass} ${list.length + 1}`, klass: m.klass, born: "", notes: "", ferts: [] };
+      if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id: uid(), name: `${m.klass} ${list.length + 1}`, klass: m.klass, breed: m.breed || "", born: "", notes: "", ferts: [] };
       return { ...m, individuals: [...list, a] }; }) }) }));
   const patchIndividual = (mobId, aId, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => a.id !== aId ? a : { ...a, ...patch }) }) }) }));
   const removeIndividual = (mobId, aId) => { setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((a) => a.id !== aId) }) })) })); setOpenAnimal(null); };
@@ -1714,7 +1728,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
     setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => { if (s.id !== section.id) return s;
       const src = (s.mobs || []).find((m) => m.id === mobId); const a = (src?.individuals || []).find((x) => x.id === aId); if (!a) return s;
       const mobsList = (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) });
-      const nm = { id: newId, species: src.species, klass: a.klass || src.klass, count: null, name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
+      const nm = { id: newId, species: src.species, klass: a.klass || src.klass, breed: src.breed || a.breed || "", name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
       return { ...s, mobs: [...mobsList, nm] }; })) }));
     setOpenAnimal(null); setSel({ kind: "mob", sectionId: section.id, id: newId }); };
 
@@ -1760,6 +1774,9 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                   <input type="number" min="0" value={f.count} onChange={(e) => setF((s) => ({ ...s, count: e.target.value }))} style={inpS} placeholder="e.g. 12" /></div>
               </div>
               <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Animals are named automatically (e.g. {(f.klass || "Sheep")} 1, {(f.klass || "Sheep")} 2) — rename any later.</p>
+              <label style={lblS}>Breed (optional)</label>
+              <input list={`breeds-${f.species}`} value={f.breed} onChange={(e) => setF((s) => ({ ...s, breed: e.target.value }))} style={inpS} placeholder="e.g. Romney, Brown Shaver" />
+              <datalist id={`breeds-${f.species}`}>{(STOCK_BREEDS[f.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
               <label style={lblS}>Name / tag (optional)</label>
               <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} style={inpS} placeholder="e.g. The Romneys, Daisy" />
               <button onClick={addMob} style={{ ...btn(C.fern), marginTop: 10, width: "100%", justifyContent: "center" }}><Check size={15} /> Add to {section.name}</button>
@@ -1845,6 +1862,9 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                   <div style={{ flex: "1 1 110px" }}><label style={lblS}>Born</label>
                     <input type="date" value={a.born || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { born: e.target.value })} style={inpS} /></div>
                 </div>
+                <label style={lblS}>Breed</label>
+                <input list={`breeds-ind-${selMob.species}`} value={a.breed || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
+                <datalist id={`breeds-ind-${selMob.species}`}>{(STOCK_BREEDS[selMob.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
                 <label style={lblS}>Notes</label>
                 <input value={a.notes || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
 
@@ -1877,11 +1897,12 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                   {aAllowed.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const on = aType === kk; return (
                     <button key={kk} onClick={() => setALog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "3px 8px", fontSize: 11, background: on ? C.fern : C.panel2, color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{v.icon} {v.label}</button>); })}
                 </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  {!STOCK_LOG[aType]?.product && <input value={aLog.what} onChange={(e) => setALog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ type: s.type, what: "", qty: "" })))}
-                    placeholder={aType === "weight" ? "e.g. condition / note" : aType === "drench" ? "product used" : "details"} style={{ flex: 1, ...inpS }} />}
-                  {(STOCK_LOG[aType]?.unit || STOCK_LOG[aType]?.count) && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? 1 : "0 0 60px", ...inpS }} />}
-                  <button onClick={() => pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ type: s.type, what: "", qty: "" })))} style={btn(C.fern)}><Plus size={14} /></button>
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <input type="date" value={aLog.date} onChange={(e) => setALog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
+                  {!STOCK_LOG[aType]?.product && <input value={aLog.what} onChange={(e) => setALog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)}
+                    placeholder={aType === "weight" ? "e.g. condition / note" : aType === "drench" ? "product used" : "details"} style={{ flex: "1 1 90px", ...inpS }} />}
+                  {(STOCK_LOG[aType]?.unit || STOCK_LOG[aType]?.count) && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? "1 1 90px" : "0 0 60px", ...inpS }} />}
+                  <button onClick={() => pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} style={btn(C.fern)}><Plus size={14} /></button>
                 </div>
                 <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, a.id, "sold")} style={{ ...btnOutline(C.soil), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as sold?"><span style={{ fontSize: 13 }}>🏷️</span> Sold</ConfirmButton>
@@ -1921,11 +1942,12 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
               {allowedMob.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const on = logType === kk; return (
                 <button key={kk} onClick={() => setLog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "4px 8px", fontSize: 11.5, background: on ? C.fern : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{v.icon} {STOCK_LOG[kk]?.product ? v.label : v.label + " all"}</button>); })}
             </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="date" value={log.date} onChange={(e) => setLog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
               {STOCK_LOG[logType]?.product
-                ? <input type="number" min="0" step="any" value={log.qty} onChange={(e) => setLog((s) => ({ ...s, qty: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ type: s.type, what: "", qty: "" })))} placeholder={STOCK_LOG[logType]?.unit || "#"} style={{ flex: 1, ...inpS }} />
-                : <input value={log.what} onChange={(e) => setLog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ type: s.type, what: "", qty: "" })))} placeholder={logType === "drench" ? "product used (optional)" : "details (optional)"} style={{ flex: 1, ...inpS }} />}
-              <button onClick={() => STOCK_LOG[logType]?.product ? pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ type: s.type, what: "", qty: "" }))) : (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ type: s.type, what: "", qty: "" })))} style={btn(C.fern)}><Plus size={14} /></button>
+                ? <input type="number" min="0" step="any" value={log.qty} onChange={(e) => setLog((s) => ({ ...s, qty: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={STOCK_LOG[logType]?.unit || "#"} style={{ flex: "1 1 90px", ...inpS }} />
+                : <input value={log.what} onChange={(e) => setLog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={logType === "drench" ? "product used (optional)" : "details (optional)"} style={{ flex: "1 1 90px", ...inpS }} />}
+              <button onClick={() => STOCK_LOG[logType]?.product ? pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date) : (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} style={btn(C.fern)}><Plus size={14} /></button>
             </div>
             {!STOCK_LOG[logType]?.product && (selMob.individuals || []).length === 0 && <p style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>Add animals first — treatments apply to the mob's animals.</p>}
             </>}
