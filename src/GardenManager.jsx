@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 76";
+const APP_BUILD = "2026-06-25 · build 77";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -890,8 +890,6 @@ export default function GardenManager() {
   const update = (patch) => setData((d) => ({ ...d, ...patch }));
   const lib = useMemo(() => buildLibrary(data), [data.plantEdits, data.customPlants, data.place]);
 
-  if (!loaded) return <div style={{ fontFamily: body, background: C.bg, color: C.muted, minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center" }}>Opening your garden…</div>;
-
   const hasStock = data.sections.some((s) => SECTION_KINDS[s.kind].uses === "stock");
   const vm = viewOverride || data.viewMode || "auto";
   const simple = vm === "simple" || (vm === "auto" && isPhone);
@@ -922,6 +920,8 @@ export default function GardenManager() {
       setSel(null);
     }
   }, [simple, loaded, hasStock]);
+
+  if (!loaded) return <div style={{ fontFamily: body, background: C.bg, color: C.muted, minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center" }}>Opening your garden…</div>;
 
   return (
     <LibCtx.Provider value={lib}>
