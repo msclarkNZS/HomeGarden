@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 84";
+const APP_BUILD = "2026-06-25 · build 86";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -377,7 +377,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [] }, viewMode: "auto", phoneLanding: "season" };
+const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -417,6 +417,8 @@ function normalize(d) {
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
   base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [] };
+  base.skips = base.skips || {};
+  { const _td = todayISO(); base.snoozes = Object.fromEntries(Object.entries(base.snoozes || {}).filter(([, v]) => typeof v === "string" && v >= _td)); }
   base.viewMode = base.viewMode || "auto"; base.phoneLanding = base.phoneLanding || "season";
   base.sections = pruneEmptyMobs(base.sections);
   return base;
@@ -1690,6 +1692,7 @@ function AreaStock({ data, setData, section, display }) {
   const [openAnimal, setOpenAnimal] = useState(null);
   const [aLog, setALog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [bulkN, setBulkN] = useState("1");
+  const [clutch, setClutch] = useState({ open: false, n: "2", klass: "", damId: "", sireId: "", born: todayISO() });
   const animalPanelRef = useRef(null);
   const choices = speciesFor(section.kind);
   const [f, setF] = useState(() => ({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" }));
@@ -1773,6 +1776,19 @@ function AreaStock({ data, setData, section, display }) {
     const patch = { [role]: parent };
     if (!openA.breed) { const b1 = match?.breed, b2 = kinBreed(other); const bs = [b1, b2].filter(Boolean); if (bs.length === 2) patch.breed = bs[0] === bs[1] ? bs[0] : `${bs[0]} × ${bs[1]}`; else if (bs.length === 1) patch.breed = bs[0]; }
     patchIndividual(selMob.id, openA.id, patch); };
+  const blendBreed = (b1, b2, fallback) => { const bs = [b1, b2].filter(Boolean); return bs.length === 2 ? (bs[0] === bs[1] ? bs[0] : `${bs[0]} × ${bs[1]}`) : (bs[0] || fallback || ""); };
+  const youngLabel = (species) => species === "chicken" ? "chicks" : species === "sheep" ? "lambs" : species === "cattle" ? "calves" : species === "goat" ? "kids" : species === "pig" ? "piglets" : "young";
+  const addClutch = (mob) => { const num = Math.max(1, Number(clutch.n) || 1);
+    const klass = clutch.klass || (mob.species === "chicken" ? "Chick" : (SPECIES[mob.species]?.classes?.[0] || mob.klass));
+    const dam = clutch.damId ? kin.find((x) => x.id === clutch.damId) : null;
+    const sire = clutch.sireId ? kin.find((x) => x.id === clutch.sireId) : null;
+    const breed = blendBreed(dam?.breed, sire?.breed, mob.breed);
+    const born = clutch.born || todayISO();
+    patchSection({ mobs: mobs.map((m) => { if (m.id !== mob.id) return m; const list = m.individuals || [];
+      const extra = Array.from({ length: num }, (_, i) => { const a = { id: uid(), name: `${klass} ${list.length + i + 1}`, klass, breed, born, notes: "", ferts: [] };
+        if (dam) a.dam = { id: dam.id, name: dam.name }; if (sire) a.sire = { id: sire.id, name: sire.name }; return a; });
+      return { ...m, individuals: [...list, ...extra] }; }) });
+    setClutch((c) => ({ ...c, open: false, n: "2", damId: "", sireId: "" })); };
   const offspring = []; if (openA) { data.sections.forEach((s) => (s.mobs || []).forEach((mm) => (mm.individuals || []).forEach((x) => { if (x.dam?.id === openA.id || x.sire?.id === openA.id) offspring.push(x.name); })));
     (data.archive || []).forEach((r) => { if (r.dam?.id === openA.id || r.sire?.id === openA.id) offspring.push(r.name); }); }
   useEffect(() => { if (openAnimal && animalPanelRef.current) animalPanelRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [openAnimal]);
@@ -1867,7 +1883,32 @@ function AreaStock({ data, setData, section, display }) {
                       <span style={{ fontSize: 11.5, color: C.muted }}>Add several:</span>
                       <input type="number" min="1" value={bulkN} onChange={(e) => setBulkN(e.target.value)} style={{ ...inpS, width: 56 }} />
                       <button onClick={() => addIndividuals(m.id, bulkN)} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: C.fern, color: "#fff", border: "none" }}>+ add</button>
+                      <button onClick={() => setClutch((c) => ({ ...c, open: !c.open, klass: c.klass || (m.species === "chicken" ? "Chick" : (SPECIES[m.species]?.classes?.[0] || m.klass)), born: todayISO() }))} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: clutch.open ? C.fernDk : C.harvest, color: "#fff", border: "none" }}>{m.species === "chicken" ? "🐣" : "👶"} {clutch.open ? "close" : `add ${youngLabel(m.species)} (same parents)`}</button>
                     </div>
+                    {clutch.open && (() => {
+                      const damOpts = kin.filter((x) => !x.archived && canBeParent(m.species, x.klass, "f"));
+                      const sireOpts = kin.filter((x) => !x.archived && canBeParent(m.species, x.klass, "m"));
+                      const dam = clutch.damId ? kin.find((x) => x.id === clutch.damId) : null;
+                      const sire = clutch.sireId ? kin.find((x) => x.id === clutch.sireId) : null;
+                      const preview = blendBreed(dam?.breed, sire?.breed, m.breed);
+                      return (
+                      <div style={{ marginTop: 8, padding: 11, border: `1px solid ${hexA(C.harvest, .4)}`, borderRadius: 10, background: hexA(C.harvest, .06) }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.fernDk, marginBottom: 6 }}>New {youngLabel(m.species)} — all sharing the same parents</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ flex: "1 1 90px" }}><label style={lblS}>How many</label><input type="number" min="1" value={clutch.n} onChange={(e) => setClutch((c) => ({ ...c, n: e.target.value }))} style={inpS} /></span>
+                          <span style={{ flex: "1 1 110px" }}><label style={lblS}>Class</label>
+                            <select value={clutch.klass} onChange={(e) => setClutch((c) => ({ ...c, klass: e.target.value }))} style={inpS}>{(SPECIES[m.species]?.classes || []).map((c) => <option key={c} value={c}>{c}</option>)}</select></span>
+                          <span style={{ flex: "1 1 130px" }}><label style={lblS}>Born</label><input type="date" value={clutch.born} onChange={(e) => setClutch((c) => ({ ...c, born: e.target.value }))} style={{ ...inpS, fontSize: 12 }} /></span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                          <span style={{ flex: "1 1 130px" }}><label style={lblS}>{parentLabel(m.species, "dam")}</label>
+                            <select value={clutch.damId} onChange={(e) => setClutch((c) => ({ ...c, damId: e.target.value }))} style={inpS}><option value="">— none —</option>{damOpts.map((x) => <option key={x.id} value={x.id}>{x.name}{x.breed ? ` (${x.breed})` : ""}</option>)}</select></span>
+                          <span style={{ flex: "1 1 130px" }}><label style={lblS}>{parentLabel(m.species, "sire")}</label>
+                            <select value={clutch.sireId} onChange={(e) => setClutch((c) => ({ ...c, sireId: e.target.value }))} style={inpS}><option value="">— none —</option>{sireOpts.map((x) => <option key={x.id} value={x.id}>{x.name}{x.breed ? ` (${x.breed})` : ""}</option>)}</select></span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 6 }}>Breed: <strong style={{ color: C.fernDk }}>{preview || "—"}</strong>{dam?.breed && sire?.breed && dam.breed !== sire.breed ? " (blended from both parents)" : ""}</div>
+                        <button onClick={() => addClutch(m)} style={{ ...btn(C.harvest), marginTop: 8, width: "100%", justifyContent: "center" }}><Plus size={14} /> Add {Math.max(1, Number(clutch.n) || 1)} {youngLabel(m.species)}</button>
+                      </div>); })()}
 
                     {allowedMob.length > 0 && <>
                     <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 600, color: C.muted }}>WHOLE-MOB</div>
@@ -2523,6 +2564,8 @@ function bedFamily(bed, viewDate) {
 // =========================== DO NOW ===============================
 function DoNowView({ data, setData, month, hemi = "south", display, setTab, setNav, setSel, goStock }) {
   const lib = useLib();
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [snoozeKey, setSnoozeKey] = useState(null);
   const sowable = lib.veg.filter((v) => (v.sow || []).includes(month));
   const seasonName = seasonOf(month, hemi).toLowerCase();
   const winter = seasonOf(month, hemi) === "Winter";
@@ -2541,7 +2584,17 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
 
   const harvests = [], planned = [], care = [];
   const careSeen = new Set();
-  const addCare = (o) => { const key = `${o.what}|${o.where}`; if (careSeen.has(key)) return; careSeen.add(key); care.push(o); };
+  const addCare = (o) => { const key = `${o.what}|${o.where}`; if (careSeen.has(key)) return; careSeen.add(key); care.push({ ...o, key }); };
+  const skips = data.skips || {};
+  const snoozes = data.snoozes || {};
+  const firstNextMonthDk = dayKey(new Date(today.getFullYear() + (month === 12 ? 1 : 0), month % 12, 1));
+  const skip = (key) => setData((d) => ({ ...d, skips: { ...(d.skips || {}), [key]: curYM } }));
+  const unskip = (key) => setData((d) => { const s = { ...(d.skips || {}) }; delete s[key]; return { ...d, skips: s }; });
+  const snooze = (item, days) => { const cap = (item.dueDk != null && item.dueDk > tk) ? item.dueDk : (tk + days);
+    const untilDk = Math.max(tk + 1, Math.min(tk + days, cap));
+    const untilISO = new Date(untilDk * 86400000).toISOString().slice(0, 10);
+    setData((d) => ({ ...d, snoozes: { ...(d.snoozes || {}), [item.key]: untilISO } })); setSnoozeKey(null); };
+  const unsnooze = (key) => setData((d) => { const s = { ...(d.snoozes || {}) }; delete s[key]; return { ...d, snoozes: s }; });
   data.sections.forEach((s) => {
     (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => {
       const go = { kind: "cell", sectionId: s.id, bedId: b.id, cellId: c.id };
@@ -2559,11 +2612,11 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
           if (active && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
         }
       }
-      if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), go }); });
+      if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go }); });
     }));
     (s.plants || []).forEach((p) => { const meta = lib.fruitByName(p.plant) || lib.berryByName(p.plant); if (!meta) return;
       const go = { kind: "marker", sectionId: s.id, plantId: p.id };
-      (meta.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(p, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${p.plant}`, detail: monthsLabel(t.months), where: s.name, due: t.months.includes(month), go }); });
+      (meta.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(p, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${p.plant}`, detail: monthsLabel(t.months), where: s.name, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go }); });
       const vrt = (meta.varieties || []).find((v) => v.name === p.variety);
       const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
       if (hmon.includes(month) || hmon.includes(nextMonth)) {
@@ -2582,7 +2635,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
     // calendar tasks: one card per species present
     Object.keys(presentSpecies).forEach((sp) => { const def = stockLib[sp]; if (!def) return;
       (def.tasks || []).filter((t) => t.mode === "calendar").forEach((t) => { const due = (t.months || []).includes(sMonth); const near = due || (t.months || []).includes(sNext);
-        if (near) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Stock", due, go: { kind: "stock", sectionId: presentSpecies[sp] } }); });
+        if (near) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Stock", due, dueDk: due ? tk : firstNextMonthDk, go: { kind: "stock", sectionId: presentSpecies[sp] } }); });
     });
     // interval tasks: per mob, due/overdue from its journal
     data.sections.forEach((s) => (s.mobs || []).forEach((m) => { const def = stockLib[m.species]; if (!def) return;
@@ -2591,7 +2644,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
         if (!soonDue) return;
         const who = `${mobHead(m)} ${m.klass}${m.name ? ` · ${m.name}` : ""}`;
         const label = st.never ? "not done yet" : st.due ? (st.overdue > 0 ? `overdue ${st.overdue}d` : "due now") : `in ${st.dueIn}d`;
-        addCare({ icon: tIcon(t.name), what: `${t.name} — ${who}`, detail: `${t.detail}${st.last ? ` · last done ${fmtDate(st.last)}` : ""}`, where: s.name, due: st.due, go: { kind: "stock", sectionId: s.id },
+        addCare({ icon: tIcon(t.name), what: `${t.name} — ${who}`, detail: `${t.detail}${st.last ? ` · last done ${fmtDate(st.last)}` : ""}`, where: s.name, due: st.due, dueDk: st.due ? tk : (st.dueIn != null ? tk + st.dueIn : tk), go: { kind: "stock", sectionId: s.id },
           tag: label, done: () => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id !== s.id ? x : { ...x, mobs: (x.mobs || []).map((mm) => mm.id !== m.id ? mm : { ...mm, ferts: [...(mm.ferts || []), { id: uid(), date: todayISO(), type: "task", task: t.name, what: t.name }] }) }) })) });
       });
     }));
@@ -2619,6 +2672,12 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
       openBeds.push({ name: b.name, where: s.name, free, group: g, fits: fits.slice(0, 6), inGroup });
     });
   });
+
+  const isSnoozed = (t) => snoozes[t.key] && tk < dayKey(new Date(snoozes[t.key]));
+  const liveCare = care.filter((t) => skips[t.key] !== curYM && !isSnoozed(t));
+  const skippedCare = care.filter((t) => skips[t.key] === curYM);
+  const snoozedCare = care.filter((t) => skips[t.key] !== curYM && isSnoozed(t));
+  const hiddenCount = skippedCare.length + snoozedCare.length;
 
   return (
     <div>
@@ -2651,14 +2710,41 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
         </Panel>
 
         <Panel title="Jobs due soon" icon={Scissors}>
-          {care.length ? care.map((t, i) => { const Ic = t.icon; return (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <div onClick={() => goTo(t.go)} style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}><Ic size={13} color={t.due ? C.harvest : C.fern} /> <span style={{ flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35) }}>{t.what}</span>{t.tag ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(t.due ? C.harvest : C.sage, .18), color: t.due ? C.harvest : C.fernDk, border: "none" }}>{t.tag}</span> : t.due ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .18), color: C.harvest, border: "none" }}>now</span> : <span style={{ fontSize: 10.5, color: C.muted }}>soon</span>}<ArrowRight size={12} color={C.muted} /></div>
+          {liveCare.length ? liveCare.map((t, i) => { const Ic = t.icon; const sopen = snoozeKey === t.key; return (
+            <div key={t.key} style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <div onClick={() => goTo(t.go)} style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, flex: 1, minWidth: 0 }}><Ic size={13} color={t.due ? C.harvest : C.fern} /> <span style={{ flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35), overflow: "hidden", textOverflow: "ellipsis" }}>{t.what}</span></div>
+                {t.tag ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(t.due ? C.harvest : C.sage, .18), color: t.due ? C.harvest : C.fernDk, border: "none" }}>{t.tag}</span> : t.due ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .18), color: C.harvest, border: "none" }}>now</span> : <span style={{ fontSize: 10.5, color: C.muted }}>soon</span>}
+                <button onClick={(e) => { e.stopPropagation(); setSnoozeKey(sopen ? null : t.key); }} title="Snooze for a while" style={{ ...iconBtn, color: sopen ? C.fern : C.muted }}><Clock size={14} /></button>
+                <button onClick={(e) => { e.stopPropagation(); skip(t.key); }} title="Skip this for the rest of the month" style={{ ...iconBtn, color: C.muted }}><X size={14} /></button>
+              </div>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{t.detail} · {t.where}</div>
+                <div onClick={() => goTo(t.go)} style={{ flex: 1, fontSize: 12, color: C.muted, lineHeight: 1.4, cursor: "pointer" }}>{t.detail} · {t.where}</div>
                 {t.done && <button onClick={(e) => { e.stopPropagation(); t.done(); }} style={{ ...chip, cursor: "pointer", flexShrink: 0, padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Check size={11} style={{ verticalAlign: -1 }} /> Done</button>}
               </div>
-            </div>); }) : <p style={pMuted}>Nothing due this month or next for the plants and stock you've placed. Tasks come from each plant's settings and the Stock guide.</p>}
+              {sopen && <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: C.muted }}>Snooze:</span>
+                {[["3 days", 3], ["1 week", 7], ["2 weeks", 14]].map(([lbl, dys]) => <button key={dys} onClick={() => snooze(t, dys)} style={{ ...chip, cursor: "pointer", padding: "3px 10px", background: hexA(C.fern, .12), color: C.fernDk, border: `1px solid ${hexA(C.fern, .3)}` }}>{lbl}</button>)}
+                {t.dueDk != null && t.dueDk > tk && <span style={{ fontSize: 10.5, color: C.muted }}>· won't hide past its due date</span>}
+              </div>}
+            </div>); }) : <p style={pMuted}>{hiddenCount ? "Everything's either done, snoozed or skipped for now." : "Nothing due this month or next for the plants and stock you've placed. Tasks come from each plant's settings and the Stock guide."}</p>}
+          {hiddenCount > 0 && (
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
+              <button onClick={() => setShowSkipped((v) => !v)} style={{ ...linkBtn, fontSize: 12 }}>{showSkipped ? "Hide" : "Show"} {hiddenCount} snoozed/skipped {showSkipped ? "▾" : "▸"}</button>
+              {showSkipped && <>
+                {snoozedCare.map((t) => (
+                  <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", fontSize: 12.5, color: C.muted }}>
+                    <Clock size={11} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.what} <span style={{ fontSize: 11 }}>· back {fmtDate(snoozes[t.key])}</span></span>
+                    <button onClick={() => unsnooze(t.key)} style={{ ...chip, cursor: "pointer", padding: "2px 9px", background: hexA(C.fern, .12), color: C.fernDk, border: "none" }}><RotateCw size={10} style={{ verticalAlign: -1 }} /> now</button>
+                  </div>))}
+                {skippedCare.map((t) => (
+                  <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", fontSize: 12.5, color: C.muted }}>
+                    <span style={{ flex: 1, textDecoration: "line-through", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.what}</span>
+                    <button onClick={() => unskip(t.key)} style={{ ...chip, cursor: "pointer", padding: "2px 9px", background: hexA(C.fern, .12), color: C.fernDk, border: "none" }}><RotateCw size={10} style={{ verticalAlign: -1 }} /> restore</button>
+                  </div>))}
+              </>}
+            </div>)}
         </Panel>
 
         <Panel title="Sow & plant now" icon={Sprout}>
@@ -3539,6 +3625,9 @@ function EggLogger({ data, setData, display }) {
   const [feedDraft, setFeedDraft] = useState({ date: todayISO(), cost: "", kg: "", note: "" });
   const [saleDraft, setSaleDraft] = useState({ date: todayISO(), eggs: "", amount: "", note: "" });
   const [showImport, setShowImport] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const editEgg = (sectionId, mobId, id, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).map((f) => f.id !== id ? f : { ...f, ...patch }) }) }) }));
+  const removeEgg = (sectionId, mobId, id) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).filter((f) => f.id !== id) }) }) }));
   const [importText, setImportText] = useState("");
   const [importMob, setImportMob] = useState(() => chickenMobs[0]?.m.id || "");
   const [importMsg, setImportMsg] = useState(null);
@@ -3610,6 +3699,34 @@ function EggLogger({ data, setData, display }) {
       <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>The full in/out summary — cost per egg, net, kept-egg value — lives in the Report (full view).</p>
 
       <div style={{ ...card }}>
+        {!showLog ? <button onClick={() => setShowLog(true)} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><FileText size={14} /> View / edit egg log</button>
+        : (() => {
+          const entries = chickenMobs.flatMap(({ m, area, sectionId }) => (m.ferts || []).filter((f) => f.type === "eggs").map((f) => ({ ...f, mobId: m.id, sectionId, area, mobName: m.name || "Chickens" }))).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+          const total = entries.reduce((n, e) => n + (Number(e.qty) || 0), 0);
+          const multi = chickenMobs.length > 1;
+          return (<>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥚 Egg log — {entries.length} entr{entries.length === 1 ? "y" : "ies"} · {total} eggs</strong>
+              <button onClick={() => setShowLog(false)} style={iconBtn}><X size={16} /></button>
+            </div>
+            {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No eggs logged yet. Add collections above, or import history.</p>
+            : <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {entries.map((e) => (
+                  <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <input type="date" value={e.date || ""} onChange={(ev) => editEgg(e.sectionId, e.mobId, e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
+                    <input type="number" min="0" step="1" value={e.qty ?? ""} onChange={(ev) => editEgg(e.sectionId, e.mobId, e.id, { qty: ev.target.value === "" ? 0 : Number(ev.target.value) })} style={{ ...inpS, flex: "0 0 70px" }} />
+                    <span style={{ fontSize: 11, color: C.muted }}>eggs</span>
+                    {multi && <span style={{ fontSize: 11, color: C.muted, flex: "1 1 80px" }}>{e.mobName}</span>}
+                    {e.imported && <span style={{ ...chip, fontSize: 9.5, padding: "1px 6px", background: hexA(C.sage, .2), color: C.fernDk, border: "none" }}>imported</span>}
+                    <span style={{ flex: 1 }} />
+                    <button onClick={() => removeEgg(e.sectionId, e.mobId, e.id)} style={iconBtn}><Trash2 size={13} /></button>
+                  </div>))}
+              </div>}
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Edit a date or count in place; changes save straight away. Feed costs and egg sales are listed (and removable) in the Report's egg summary.</p>
+          </>); })()}
+      </div>
+
+      <div style={{ ...card }}>
         {!showImport ? <button onClick={() => { setShowImport(true); setImportMsg(null); }} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><Upload size={14} /> Import egg history (bulk paste)</button>
         : <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
@@ -3634,6 +3751,32 @@ function EggLogger({ data, setData, display }) {
         {importMsg && <p style={{ fontSize: 12.5, color: C.fern, margin: "8px 0 0", lineHeight: 1.5 }}><Check size={13} style={{ verticalAlign: -2 }} /> {importMsg} It'll show in the Report's egg in/out summary.</p>}
       </div>
     </div>
+  );
+}
+
+function EggChart({ days }) {
+  if (!days || !days.length) return null;
+  const W = 600, H = 170, padL = 26, padR = 8, padT = 10, padB = 20;
+  const n = days.length;
+  const maxE = Math.max(1, ...days.map((d) => d.eggs));
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const y = (v) => padT + innerH - (v / maxE) * innerH;
+  const bw = Math.max(1, Math.min(16, (innerW / n) * 0.7));
+  const N = 7;
+  const avg = days.map((d, i) => { const s = days.slice(Math.max(0, i - N + 1), i + 1); return s.reduce((a, b) => a + b.eggs, 0) / s.length; });
+  const line = avg.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const fmtShort = (k) => { const d = new Date(k * 86400000); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+  const ticks = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", marginTop: 4 }}>
+      {[0, 0.5, 1].map((t) => { const v = maxE * t, yy = y(v); return (<g key={t}>
+        <line x1={padL} x2={W - padR} y1={yy} y2={yy} stroke={C.line} strokeWidth="1" />
+        <text x={padL - 4} y={yy + 3} textAnchor="end" fontSize="9" fill={C.muted}>{Math.round(v)}</text></g>); })}
+      {days.map((d, i) => d.eggs > 0 ? <rect key={i} x={x(i) - bw / 2} y={y(d.eggs)} width={bw} height={Math.max(0, padT + innerH - y(d.eggs))} rx="1" fill={hexA(C.harvest, .55)} /> : null)}
+      <polyline points={line} fill="none" stroke={C.fern} strokeWidth="2" strokeLinejoin="round" />
+      {ticks.map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="9" fill={C.muted}>{fmtShort(days[i].k)}</text>)}
+    </svg>
   );
 }
 
@@ -3847,6 +3990,10 @@ function ReportView({ data, setData, month, hemi, display }) {
         const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
         const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
         const net = revenue - feedCost; const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length;
+        const eggByDay = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggByDay[k] = (eggByDay[k] || 0) + (Number(f.qty) || 0); } }); });
+        const eggDays = (() => { const ks = Object.keys(eggByDay).map(Number); if (!ks.length) return [];
+          let lo = Math.min(...ks), hi = Math.max(...ks); if (hi - lo > 120) lo = hi - 120;
+          const out = []; for (let k = lo; k <= hi; k++) out.push({ k, eggs: eggByDay[k] || 0 }); return out; })();
         const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         return (
           <div style={{ ...card, background: "#fff" }}>
@@ -3868,6 +4015,13 @@ function ReportView({ data, setData, month, hemi, display }) {
             {hasChooks && <>
               <H>Eggs — in & out ({windowLabel})</H>
               <div style={row}>🥚 <strong>{eggsLaid}</strong> laid · 🏷️ {eggsSold} sold · 🏡 {eggsKept} kept (eaten/spare)</div>
+              {eggDays.length > 1 && <div style={{ margin: "6px 0 2px" }}>
+                <EggChart days={eggDays} />
+                <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
+                  <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2, verticalAlign: 0 }} /> eggs per day</span>
+                  <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> 7-day average</span>
+                </div>
+              </div>}
               <div style={row}>💰 In <strong>{money(revenue)}</strong> · 🌾 Out <strong>{money(feedCost)}</strong> · Net <strong style={{ color: net >= 0 ? C.fern : C.beet }}>{money(net)}</strong></div>
               {costPerEgg != null ? <>
                 <div style={row}>Running cost per egg: <strong>{money(costPerEgg)}</strong> · about {money(costPerEgg * 12)}/dozen</div>
