@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 81";
+const APP_BUILD = "2026-06-25 · build 82";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1754,9 +1754,8 @@ function AreaStock({ data, setData, section, display }) {
     setOpenAnimal(null); setSelMobId(newId); };
 
   const daysHere = (m) => Math.max(0, Math.round((Date.now() - new Date(m.placed).getTime()) / 86400000));
-  const classBreakdown = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
-    const order = SPECIES[m.species]?.classes || []; const keys = Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
-    return keys.map((c) => `${counts[c]} ${c}`).join(" · ") || "no animals"; };
+  const classCounts = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
+    const order = SPECIES[m.species]?.classes || []; return Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99)).map((c) => ({ klass: c, n: counts[c] })); };
   const selMob = mobs.find((m) => m.id === selMobId) || null;
   const sp = selMob ? SPECIES[selMob.species] : null;
   const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t)) : [];
@@ -1827,7 +1826,11 @@ function AreaStock({ data, setData, section, display }) {
                   <span style={{ fontSize: 22 }}>{spm?.emoji || "🐾"}</span>
                   <span style={{ flex: 1 }}>
                     <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{m.name || spm?.label || "Mob"} · {mobHead(m)}</div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>{classBreakdown(m)}{m.breed ? ` · ${m.breed}` : ""}</div>
+                    {(() => { const cc = classCounts(m); return cc.length ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
+                        {cc.map((x) => <span key={x.klass} style={{ ...chip, fontSize: 10.5, padding: "1px 7px", background: hexA(C.fern, .12), color: C.fernDk, border: "none" }}>{x.n} {x.klass}</span>)}
+                        {m.breed && <span style={{ ...chip, fontSize: 10.5, padding: "1px 7px", background: hexA(C.soil, .14), color: C.soil, border: "none" }}>{m.breed}</span>}
+                      </div>) : <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>no animals{m.breed ? ` · ${m.breed}` : ""}</div>; })()}
                   </span>
                   <span style={{ color: C.muted, fontSize: 13 }}>{on ? "▾" : "▸"}</span>
                 </button>
