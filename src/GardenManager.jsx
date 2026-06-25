@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 86";
+const APP_BUILD = "2026-06-25 · build 87";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -377,7 +377,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
+const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -416,7 +416,7 @@ function normalize(d) {
   base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
-  base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [] };
+  base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [], purchases: (base.eggLedger?.purchases) || [] };
   base.skips = base.skips || {};
   { const _td = todayISO(); base.snoozes = Object.fromEntries(Object.entries(base.snoozes || {}).filter(([, v]) => typeof v === "string" && v >= _td)); }
   base.viewMode = base.viewMode || "auto"; base.phoneLanding = base.phoneLanding || "season";
@@ -3624,8 +3624,13 @@ function EggLogger({ data, setData, display }) {
   const [eggDate, setEggDate] = useState(todayISO());
   const [feedDraft, setFeedDraft] = useState({ date: todayISO(), cost: "", kg: "", note: "" });
   const [saleDraft, setSaleDraft] = useState({ date: todayISO(), eggs: "", amount: "", note: "" });
+  const [buyDraft, setBuyDraft] = useState({ date: todayISO(), birds: "", cost: "", note: "" });
+  const ledgerWrite = (fn) => setData((d) => { const L = { feed: [], sales: [], purchases: [], ...(d.eggLedger || {}) }; return { ...d, eggLedger: fn(L) }; });
+  const editLedger = (kind, id, patch) => ledgerWrite((L) => ({ ...L, [kind]: (L[kind] || []).map((x) => x.id !== id ? x : { ...x, ...patch }) }));
+  const removeLedger = (kind, id) => ledgerWrite((L) => ({ ...L, [kind]: (L[kind] || []).filter((x) => x.id !== id) }));
   const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [logFilter, setLogFilter] = useState("all");
   const editEgg = (sectionId, mobId, id, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).map((f) => f.id !== id ? f : { ...f, ...patch }) }) }) }));
   const removeEgg = (sectionId, mobId, id) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).filter((f) => f.id !== id) }) }) }));
   const [importText, setImportText] = useState("");
@@ -3648,7 +3653,7 @@ function EggLogger({ data, setData, display }) {
         sections = d.sections.map((s) => ({ ...s, mobs: (s.mobs || []).map((m) => m.id !== importMob ? m : { ...m, ferts: [...(m.ferts || []), ...eggEntries] }) })); }
       const sales = parsedRows.filter((r) => (r.sold || 0) > 0 || (r.sale || 0) > 0).map((r) => ({ id: uid(), date: r.date, eggs: r.sold || 0, amount: r.sale || 0, note: "imported" }));
       const feeds = parsedRows.filter((r) => (r.feed || 0) > 0).map((r) => ({ id: uid(), date: r.date, cost: r.feed, kg: null, note: "imported" }));
-      return { ...d, sections, eggLedger: { feed: [...((d.eggLedger || {}).feed || []), ...feeds], sales: [...((d.eggLedger || {}).sales || []), ...sales] } }; });
+      return { ...d, sections, eggLedger: { feed: [], sales: [], purchases: [], ...(d.eggLedger || {}), feed: [...((d.eggLedger || {}).feed || []), ...feeds], sales: [...((d.eggLedger || {}).sales || []), ...sales] } }; });
     setImportMsg(`Imported ${parsedRows.length} row${parsedRows.length === 1 ? "" : "s"} — ${sum("collected")} eggs collected, ${sum("sold")} sold, ${money(sum("sale"))} sales, ${money(sum("feed"))} feed.`);
     setImportText(""); };
 
@@ -3656,9 +3661,11 @@ function EggLogger({ data, setData, display }) {
     setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: [...(m.ferts || []), { id: uid(), date: eggDate || todayISO(), type: "eggs", qty: n, unit: "eggs" }] }) }) }));
     setEgg((s) => ({ ...s, [mobId]: "" })); };
   const addFeed = () => { const cost = Number(feedDraft.cost) || 0; const kg = feedDraft.kg === "" ? null : Number(feedDraft.kg); if (!cost && kg == null) return;
-    setData((d) => ({ ...d, eggLedger: { feed: [...((d.eggLedger || {}).feed || []), { id: uid(), date: feedDraft.date || todayISO(), cost, kg, note: feedDraft.note.trim() }], sales: (d.eggLedger || {}).sales || [] } })); setFeedDraft({ date: todayISO(), cost: "", kg: "", note: "" }); };
+    ledgerWrite((L) => ({ ...L, feed: [...(L.feed || []), { id: uid(), date: feedDraft.date || todayISO(), cost, kg, note: feedDraft.note.trim() }] })); setFeedDraft({ date: todayISO(), cost: "", kg: "", note: "" }); };
   const addSale = () => { const eggs = Number(saleDraft.eggs) || 0; const amount = Number(saleDraft.amount) || 0; if (!eggs && !amount) return;
-    setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: [...((d.eggLedger || {}).sales || []), { id: uid(), date: saleDraft.date || todayISO(), eggs, amount, note: saleDraft.note.trim() }] } })); setSaleDraft({ date: todayISO(), eggs: "", amount: "", note: "" }); };
+    ledgerWrite((L) => ({ ...L, sales: [...(L.sales || []), { id: uid(), date: saleDraft.date || todayISO(), eggs, amount, note: saleDraft.note.trim() }] })); setSaleDraft({ date: todayISO(), eggs: "", amount: "", note: "" }); };
+  const addPurchase = () => { const birds = Number(buyDraft.birds) || 0; const cost = Number(buyDraft.cost) || 0; if (!birds && !cost) return;
+    ledgerWrite((L) => ({ ...L, purchases: [...(L.purchases || []), { id: uid(), date: buyDraft.date || todayISO(), birds, cost, note: buyDraft.note.trim() }] })); setBuyDraft({ date: todayISO(), birds: "", cost: "", note: "" }); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -3695,34 +3702,55 @@ function EggLogger({ data, setData, display }) {
           <input value={saleDraft.note} onChange={(e) => setSaleDraft((s) => ({ ...s, note: e.target.value }))} placeholder="buyer (optional)" style={{ ...inpS, marginTop: 6 }} />
           <button onClick={addSale} style={{ ...btn(C.harvest), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add egg sale</button>
         </div>
+        <div style={{ flex: "1 1 240px", ...card }}>
+          <strong style={{ fontSize: 12.5, color: C.fernDk }}>🐔 Chickens purchased</strong>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            <input type="date" value={buyDraft.date} onChange={(e) => setBuyDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+            <input type="number" min="0" step="1" value={buyDraft.birds} onChange={(e) => setBuyDraft((s) => ({ ...s, birds: e.target.value }))} placeholder="birds" style={{ ...inpS, flex: "1 1 70px" }} />
+            <input type="number" min="0" step="any" value={buyDraft.cost} onChange={(e) => setBuyDraft((s) => ({ ...s, cost: e.target.value }))} placeholder="$ cost" style={{ ...inpS, flex: "1 1 70px" }} />
+          </div>
+          <input value={buyDraft.note} onChange={(e) => setBuyDraft((s) => ({ ...s, note: e.target.value }))} placeholder="breed / source (optional)" style={{ ...inpS, marginTop: 6 }} />
+          <button onClick={addPurchase} style={{ ...btn(C.soil), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add bird cost</button>
+        </div>
       </div>
       <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>The full in/out summary — cost per egg, net, kept-egg value — lives in the Report (full view).</p>
 
       <div style={{ ...card }}>
         {!showLog ? <button onClick={() => setShowLog(true)} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><FileText size={14} /> View / edit egg log</button>
         : (() => {
-          const entries = chickenMobs.flatMap(({ m, area, sectionId }) => (m.ferts || []).filter((f) => f.type === "eggs").map((f) => ({ ...f, mobId: m.id, sectionId, area, mobName: m.name || "Chickens" }))).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-          const total = entries.reduce((n, e) => n + (Number(e.qty) || 0), 0);
+          const L = data.eggLedger || {};
+          const collected = chickenMobs.flatMap(({ m, area, sectionId }) => (m.ferts || []).filter((f) => f.type === "eggs").map((f) => ({ src: "collected", id: f.id, date: f.date, qty: f.qty, imported: f.imported, mobId: m.id, sectionId, area, mobName: m.name || "Chickens" })));
+          const sold = (L.sales || []).map((x) => ({ src: "sold", ...x }));
+          const feed = (L.feed || []).map((x) => ({ src: "feed", ...x }));
+          const bought = (L.purchases || []).map((x) => ({ src: "purchase", ...x }));
+          const all = [...collected, ...sold, ...feed, ...bought];
+          const FILTERS = [["all", "All"], ["collected", "🥚 Collected"], ["sold", "🏷️ Sold"], ["feed", "🌾 Feed"], ["purchase", "🐔 Birds"]];
+          const counts = { all: all.length, collected: collected.length, sold: sold.length, feed: feed.length, purchase: bought.length };
+          const entries = (logFilter === "all" ? all : all.filter((e) => e.src === logFilter)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
           const multi = chickenMobs.length > 1;
+          const tEggs = collected.reduce((n, e) => n + (Number(e.qty) || 0), 0);
           return (<>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-              <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥚 Egg log — {entries.length} entr{entries.length === 1 ? "y" : "ies"} · {total} eggs</strong>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥚 Egg log</strong>
               <button onClick={() => setShowLog(false)} style={iconBtn}><X size={16} /></button>
             </div>
-            {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No eggs logged yet. Add collections above, or import history.</p>
-            : <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
+              {FILTERS.map(([k, lbl]) => <button key={k} onClick={() => setLogFilter(k)} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: logFilter === k ? C.fern : C.panel2, color: logFilter === k ? "#fff" : C.muted, border: `1px solid ${logFilter === k ? C.fern : C.line}` }}>{lbl} {counts[k] > 0 ? `(${counts[k]})` : ""}</button>)}
+            </div>
+            {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>{all.length === 0 ? "Nothing logged yet. Add collections, sales, feed or birds above." : "No entries of this type."}</p>
+            : <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                 {entries.map((e) => (
-                  <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
-                    <input type="date" value={e.date || ""} onChange={(ev) => editEgg(e.sectionId, e.mobId, e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
-                    <input type="number" min="0" step="1" value={e.qty ?? ""} onChange={(ev) => editEgg(e.sectionId, e.mobId, e.id, { qty: ev.target.value === "" ? 0 : Number(ev.target.value) })} style={{ ...inpS, flex: "0 0 70px" }} />
-                    <span style={{ fontSize: 11, color: C.muted }}>eggs</span>
-                    {multi && <span style={{ fontSize: 11, color: C.muted, flex: "1 1 80px" }}>{e.mobName}</span>}
-                    {e.imported && <span style={{ ...chip, fontSize: 9.5, padding: "1px 6px", background: hexA(C.sage, .2), color: C.fernDk, border: "none" }}>imported</span>}
+                  <div key={e.src + e.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <input type="date" value={e.date || ""} onChange={(ev) => e.src === "collected" ? editEgg(e.sectionId, e.mobId, e.id, { date: ev.target.value }) : editLedger(e.src === "sold" ? "sales" : e.src === "feed" ? "feed" : "purchases", e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
+                    {e.src === "collected" && <><span style={{ fontSize: 13 }}>🥚</span><input type="number" min="0" step="1" value={e.qty ?? ""} onChange={(ev) => editEgg(e.sectionId, e.mobId, e.id, { qty: ev.target.value === "" ? 0 : Number(ev.target.value) })} style={{ ...inpS, flex: "0 0 64px" }} /><span style={{ fontSize: 11, color: C.muted }}>eggs{multi ? ` · ${e.mobName}` : ""}</span>{e.imported && <span style={{ ...chip, fontSize: 9.5, padding: "1px 6px", background: hexA(C.sage, .2), color: C.fernDk, border: "none" }}>imp</span>}</>}
+                    {e.src === "sold" && <><span style={{ fontSize: 13 }}>🏷️</span><input type="number" min="0" step="1" value={e.eggs ?? ""} onChange={(ev) => editLedger("sales", e.id, { eggs: Number(ev.target.value) || 0 })} style={{ ...inpS, flex: "0 0 56px" }} title="eggs sold" /><span style={{ fontSize: 11, color: C.muted }}>eggs</span><span style={{ fontSize: 11, color: C.muted }}>$</span><input type="number" min="0" step="any" value={e.amount ?? ""} onChange={(ev) => editLedger("sales", e.id, { amount: Number(ev.target.value) || 0 })} style={{ ...inpS, flex: "0 0 64px" }} title="$ in" />{e.note && <span style={{ fontSize: 11, color: C.muted }}>{e.note}</span>}</>}
+                    {e.src === "feed" && <><span style={{ fontSize: 13 }}>🌾</span><span style={{ fontSize: 11, color: C.muted }}>$</span><input type="number" min="0" step="any" value={e.cost ?? ""} onChange={(ev) => editLedger("feed", e.id, { cost: Number(ev.target.value) || 0 })} style={{ ...inpS, flex: "0 0 64px" }} title="$ feed" /><input type="number" min="0" step="any" value={e.kg ?? ""} onChange={(ev) => editLedger("feed", e.id, { kg: ev.target.value === "" ? null : Number(ev.target.value) })} placeholder="kg" style={{ ...inpS, flex: "0 0 56px" }} title="kg" />{e.note && <span style={{ fontSize: 11, color: C.muted }}>{e.note}</span>}</>}
+                    {e.src === "purchase" && <><span style={{ fontSize: 13 }}>🐔</span><input type="number" min="0" step="1" value={e.birds ?? ""} onChange={(ev) => editLedger("purchases", e.id, { birds: Number(ev.target.value) || 0 })} style={{ ...inpS, flex: "0 0 56px" }} title="birds" /><span style={{ fontSize: 11, color: C.muted }}>birds</span><span style={{ fontSize: 11, color: C.muted }}>$</span><input type="number" min="0" step="any" value={e.cost ?? ""} onChange={(ev) => editLedger("purchases", e.id, { cost: Number(ev.target.value) || 0 })} style={{ ...inpS, flex: "0 0 64px" }} title="$ cost" />{e.note && <span style={{ fontSize: 11, color: C.muted }}>{e.note}</span>}</>}
                     <span style={{ flex: 1 }} />
-                    <button onClick={() => removeEgg(e.sectionId, e.mobId, e.id)} style={iconBtn}><Trash2 size={13} /></button>
+                    <button onClick={() => e.src === "collected" ? removeEgg(e.sectionId, e.mobId, e.id) : removeLedger(e.src === "sold" ? "sales" : e.src === "feed" ? "feed" : "purchases", e.id)} style={iconBtn}><Trash2 size={13} /></button>
                   </div>))}
               </div>}
-            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Edit a date or count in place; changes save straight away. Feed costs and egg sales are listed (and removable) in the Report's egg summary.</p>
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Edit any date or number in place — changes save straight away. {logFilter === "collected" || logFilter === "all" ? `${tEggs} eggs collected in total. ` : ""}Use the filters to focus on one kind of entry.</p>
           </>); })()}
       </div>
 
@@ -3784,7 +3812,7 @@ function ReportView({ data, setData, month, hemi, display }) {
   const lib = useLib();
   const today = new Date(); const tk = dayKey(today);
   const money = (n) => "$" + (Number(n) || 0).toFixed(2);
-  const removeLedger = (kind, id) => setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: (d.eggLedger || {}).sales || [], [kind]: ((d.eggLedger || {})[kind] || []).filter((x) => x.id !== id) } }));
+  const removeLedger = (kind, id) => setData((d) => { const L = { feed: [], sales: [], purchases: [], ...(d.eggLedger || {}) }; return { ...d, eggLedger: { ...L, [kind]: (L[kind] || []).filter((x) => x.id !== id) } }; });
   const season = seasonOf(month, hemi);
   const nextMonth = (month % 12) + 1;
   const curYM = todayISO().slice(0, 7);
@@ -3985,16 +4013,17 @@ function ReportView({ data, setData, month, hemi, display }) {
         const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
         let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
         const inWin = (x) => { const k = dayKey(new Date(x.date)); return k >= winFrom && k <= winTo; };
-        const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin);
+        const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin); const buysW = (data.eggLedger?.purchases || []).filter(inWin);
         const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
+        const birdCost = buysW.reduce((n, x) => n + (x.cost || 0), 0); const birdsBought = buysW.reduce((n, x) => n + (x.birds || 0), 0);
         const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
         const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
-        const net = revenue - feedCost; const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length;
+        const totalOut = feedCost + birdCost; const net = revenue - totalOut; const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length;
         const eggByDay = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggByDay[k] = (eggByDay[k] || 0) + (Number(f.qty) || 0); } }); });
         const eggDays = (() => { const ks = Object.keys(eggByDay).map(Number); if (!ks.length) return [];
           let lo = Math.min(...ks), hi = Math.max(...ks); if (hi - lo > 120) lo = hi - 120;
           const out = []; for (let k = lo; k <= hi; k++) out.push({ k, eggs: eggByDay[k] || 0 }); return out; })();
-        const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         return (
           <div style={{ ...card, background: "#fff" }}>
             <div style={{ fontFamily: display, fontSize: 21, fontWeight: 600, color: C.fernDk }}>{data.propertyName} — livestock</div>
@@ -4022,7 +4051,8 @@ function ReportView({ data, setData, month, hemi, display }) {
                   <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> 7-day average</span>
                 </div>
               </div>}
-              <div style={row}>💰 In <strong>{money(revenue)}</strong> · 🌾 Out <strong>{money(feedCost)}</strong> · Net <strong style={{ color: net >= 0 ? C.fern : C.beet }}>{money(net)}</strong></div>
+              <div style={row}>💰 In <strong>{money(revenue)}</strong> · 🌾 Feed <strong>{money(feedCost)}</strong>{birdCost ? <> · 🐔 Birds <strong>{money(birdCost)}</strong></> : null} · Net <strong style={{ color: net >= 0 ? C.fern : C.beet }}>{money(net)}</strong></div>
+              {birdsBought > 0 && <div style={{ ...row, fontSize: 12.5, color: C.muted }}>{birdsBought} bird{birdsBought === 1 ? "" : "s"} bought in this window — counted in costs &amp; net, but the running cost-per-egg below uses feed only.</div>}
               {costPerEgg != null ? <>
                 <div style={row}>Running cost per egg: <strong>{money(costPerEgg)}</strong> · about {money(costPerEgg * 12)}/dozen</div>
                 <div style={row}>The {eggsKept} egg{eggsKept === 1 ? "" : "s"} you kept cost about <strong>{money(keptCost)}</strong> to produce ({eggsKept} × {money(costPerEgg)})</div>
@@ -4032,7 +4062,7 @@ function ReportView({ data, setData, month, hemi, display }) {
                 <div style={{ ...row, color: C.muted, marginTop: 8 }}>Entries in this window <span style={{ fontSize: 11 }}>(add new ones from the Gather tab):</span></div>
                 {ledgerRows.slice(0, 40).map((x) => (
                   <div key={x.kind + x.id} style={{ ...row, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
+                    <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : x.kind === "purchases" ? `🐔 Bought ${x.birds || 0} bird${x.birds === 1 ? "" : "s"} ${money(x.cost)}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
                     <button onClick={() => removeLedger(x.kind, x.id)} style={iconBtn}><Trash2 size={12} /></button>
                   </div>))}
               </>}
