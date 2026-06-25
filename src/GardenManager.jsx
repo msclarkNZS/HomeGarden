@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 77";
+const APP_BUILD = "2026-06-25 · build 78";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -896,7 +896,7 @@ export default function GardenManager() {
   const FULL_TABS = [
     { id: "map", label: "Property", icon: Map },
     ...(hasStock ? [{ id: "stock", label: "Stock", icon: Fence }] : []),
-    { id: "harvest", label: "Gather", icon: Cherry },
+    { id: "harvest", label: "Gather & care", icon: Cherry },
     { id: "weather", label: "Weather", icon: CloudSun },
     { id: "season", label: "Do now", icon: CalendarDays },
     { id: "rotation", label: "Rotation", icon: RefreshCw },
@@ -904,8 +904,7 @@ export default function GardenManager() {
     { id: "report", label: "Report", icon: FileText },
   ];
   const PHONE_TABS = [
-    { id: "harvest", label: "Gather", icon: Cherry },
-    { id: "beds", label: "Beds", icon: Grid3x3 },
+    { id: "harvest", label: "Gather & care", icon: Cherry },
     { id: "season", label: "Do now", icon: CalendarDays },
     ...(hasStock ? [{ id: "stock", label: "Animals", icon: Fence }] : []),
     { id: "weather", label: "Weather", icon: CloudSun },
@@ -956,7 +955,6 @@ export default function GardenManager() {
 
       <main style={{ padding: "18px clamp(12px, 4vw, 18px)" }}>
         {tab === "harvest" && <HarvestCareView data={data} setData={setData} display={display} />}
-        {tab === "beds" && <BedsCareView data={data} setData={setData} display={display} />}
         {tab === "map" && <PropertyTab {...{ data, setData, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }} />}
         {tab === "stock" && hasStock && <StockPage data={data} setData={setData} display={display} focusId={stockFocus} />}
         {tab === "weather" && <WeatherView place={place} hemi={hemi} month={month} display={display} />}
@@ -1623,14 +1621,19 @@ function StockPage({ data, setData, display, focusId, onBack }) {
           {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = !!expanded[s.id]; const head = (s.mobs || []).reduce((n, m) => n + mobHead(m), 0);
             return (
             <div key={s.id} style={{ border: `1px solid ${on ? hexA(k.color, .5) : C.line}`, borderRadius: 12, background: C.panel, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: on ? hexA(k.color, .12) : "transparent" }}>
+              <button onClick={() => setExpanded((e) => ({ ...e, [s.id]: !e[s.id] }))}
+                style={{ width: "100%", textAlign: "left", cursor: "pointer", border: "none", display: "flex", alignItems: "center", gap: 8, padding: "11px 12px", background: on ? hexA(k.color, .12) : "transparent" }}>
                 <KI size={18} color={k.color} />
-                <input value={s.name} onChange={(e) => patchSection(s.id, { name: e.target.value })}
-                  style={{ flex: 1, fontFamily: display, fontSize: 16, fontWeight: 600, border: "none", background: "transparent", color: C.fernDk, outline: "none", minWidth: 80 }} />
+                <span style={{ flex: 1, fontFamily: display, fontSize: 16, fontWeight: 600, color: C.fernDk }}>{s.name}</span>
                 <span style={{ fontSize: 12, color: C.muted }}>{head} head</span>
-                <button onClick={() => setExpanded((e) => ({ ...e, [s.id]: !e[s.id] }))} style={{ ...iconBtn, color: C.fern, fontSize: 15 }}>{on ? "▾" : "▸"}</button>
-              </div>
-              {on && <div style={{ padding: "0 12px 14px" }}><AreaStock data={data} setData={setData} section={s} display={display} /></div>}
+                <span style={{ color: C.fern, fontSize: 15 }}>{on ? "▾" : "▸"}</span>
+              </button>
+              {on && <div style={{ padding: "0 12px 14px" }}>
+                <label style={{ fontSize: 11.5, color: C.muted, display: "block", margin: "2px 0 3px" }}>Area name</label>
+                <input value={s.name} onChange={(e) => patchSection(s.id, { name: e.target.value })}
+                  style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 9px", fontSize: 14, fontFamily: display, fontWeight: 600, color: C.fernDk, background: C.panel2, marginBottom: 6 }} />
+                <AreaStock data={data} setData={setData} section={s} display={display} />
+              </div>}
             </div>); })}
         </div>
       )}
@@ -3244,7 +3247,7 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
 
         <label style={lbl}>Phone opens on</label>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["harvest", "Gather"], ["beds", "Beds"], ["season", "Do now"], ["stock", "Animals"]].map(([v, l]) => { const cur = (data.phoneLanding || "season") === v; return (
+          {[["harvest", "Gather & care"], ["season", "Do now"], ["stock", "Animals"]].map(([v, l]) => { const cur = (data.phoneLanding || "season") === v; return (
             <button key={v} onClick={() => setData((d) => ({ ...d, phoneLanding: v }))} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{l}</button>); })}
         </div>
 
@@ -3322,10 +3325,10 @@ function HarvestCareView({ data, setData, display }) {
   const [sub, setSub] = useState("plants");
   return (
     <div>
-      <h2 style={{ ...h2(display), marginBottom: 4 }}>Gather</h2>
-      <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>Quick logging for what you bring in — record harvests and the eggs you collect, plus feed bought and eggs sold. (Feeding, spraying and animal care live inside the gardens and Animals.)</p>
+      <h2 style={{ ...h2(display), marginBottom: 4 }}>Gather &amp; care</h2>
+      <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>The quick jobs you do on your feet — open a garden, then a bed, then a plant group to log a pick or a feed/spray. Eggs and feed have their own tab.</p>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["plants", "🧺 Harvest"], ...(hasStock ? [["eggs", "🥚 Eggs & feed"]] : [])].map(([kk, l]) => (
+        {[["plants", "🌿 Garden"], ...(hasStock ? [["eggs", "🥚 Eggs & feed"]] : [])].map(([kk, l]) => (
           <button key={kk} onClick={() => setSub(kk)} style={{ ...chip, cursor: "pointer", padding: "7px 13px", background: sub === kk ? C.fern : C.panel2, color: sub === kk ? "#fff" : C.muted, border: `1px solid ${sub === kk ? C.fern : C.line}` }}>{l}</button>))}
       </div>
       {sub === "plants" ? <PlantLogger data={data} setData={setData} display={display} /> : <EggLogger data={data} setData={setData} display={display} />}
@@ -3333,77 +3336,87 @@ function HarvestCareView({ data, setData, display }) {
   );
 }
 
-function BedsCareView({ data, setData, display }) {
-  return (
-    <div>
-      <h2 style={{ ...h2(display), marginBottom: 4 }}>Beds & care</h2>
-      <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>Open an area, then a plant grouping, to log a feed, spray or other care — quick jobs you do while you're out among the beds.</p>
-      <PlantLogger data={data} setData={setData} display={display} mode="care" />
-    </div>
-  );
-}
-
-function PlantLogger({ data, setData, display, mode = "harvest" }) {
+function PlantLogger({ data, setData, display }) {
   const areas = data.sections.filter((s) => { const u = SECTION_KINDS[s.kind].uses; return u === "beds" || u === "plants"; });
   const [openArea, setOpenArea] = useState(() => areas[0]?.id || null);
+  const [openBed, setOpenBed] = useState(null);
   const [openItem, setOpenItem] = useState(null);
+  const [mode, setMode] = useState("harvest");
   const [h, setH] = useState({ qty: "", unit: "handful", note: "", date: todayISO() });
   const [care, setCare] = useState({ note: "", date: todayISO() });
 
   const addToPlanting = (sectionId, bedId, pid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, beds: (s.beds || []).map((b) => b.id !== bedId ? b : { ...b, plantings: (b.plantings || []).map((p) => p.id !== pid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }) }));
   const addToMarker = (sectionId, mid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, plants: (s.plants || []).map((p) => p.id !== mid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }));
+  const logHarvest = (write) => { if (h.qty === "" && !h.note.trim()) return; write({ id: uid(), date: h.date || todayISO(), type: "harvest", qty: h.qty === "" ? null : Number(h.qty), unit: h.unit, what: h.note.trim() || undefined }); setH({ qty: "", unit: h.unit, note: "", date: todayISO() }); };
+  const logCare = (write) => { if (!care.note.trim()) return; write({ id: uid(), date: care.date || todayISO(), what: care.note.trim() }); setCare({ note: "", date: todayISO() }); };
 
-  const itemsFor = (s) => { const out = [];
-    if (SECTION_KINDS[s.kind].uses === "beds") (s.beds || []).forEach((b) => bedPlantings(b).forEach((p) => { if (!plantingRemoved(p)) out.push({ key: p.id, plant: p.plant, sub: b.name + (p.variety ? ` · ${p.variety}` : ""), obj: p, write: (e) => addToPlanting(s.id, b.id, p.id, e) }); }));
-    else (s.plants || []).forEach((p) => out.push({ key: p.id, plant: p.plant, sub: "", obj: p, write: (e) => addToMarker(s.id, p.id, e) }));
-    return out; };
-
-  const logHarvest = (it) => { if (h.qty === "" && !h.note.trim()) return; it.write({ id: uid(), date: h.date || todayISO(), type: "harvest", qty: h.qty === "" ? null : Number(h.qty), unit: h.unit, what: h.note.trim() || undefined }); setH({ qty: "", unit: h.unit, note: "", date: todayISO() }); };
-  const logCare = (it) => { if (!care.note.trim()) return; it.write({ id: uid(), date: care.date || todayISO(), what: care.note.trim() }); setCare({ note: "", date: todayISO() }); };
+  const leaf = (it) => { const sel = openItem === it.key; const picks = (it.obj.ferts || []).filter((f) => f.type === "harvest").length; const cares = (it.obj.ferts || []).filter((f) => f.type !== "harvest" && f.type !== "task").length; const last = (it.obj.ferts || []).slice(-1)[0];
+    return (
+      <div key={it.key} style={{ border: `1px solid ${sel ? hexA(C.harvest, .6) : C.line}`, borderRadius: 9, background: sel ? hexA(C.harvest, .07) : C.panel2, overflow: "hidden" }}>
+        <button onClick={() => { setOpenItem(sel ? null : it.key); setMode("harvest"); }} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", padding: "8px 11px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1, fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{it.plant}{it.sub ? <span style={{ fontWeight: 400, color: C.muted, fontSize: 12 }}> · {it.sub}</span> : null}</span>
+          {(picks > 0 || cares > 0) && <span style={{ fontSize: 11, color: C.muted }}>{picks > 0 ? `${picks} pick${picks === 1 ? "" : "s"}` : ""}{picks > 0 && cares > 0 ? " · " : ""}{cares > 0 ? `${cares} fed` : ""}</span>}
+          <span style={{ color: sel ? C.harvest : C.muted, fontSize: 12 }}>{sel ? "▾" : "log ›"}</span>
+        </button>
+        {sel && <div style={{ padding: "0 11px 11px" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {[["harvest", "🧺 Harvest"], ["care", "💧 Feed / spray"]].map(([m, l]) => (
+              <button key={m} onClick={() => setMode(m)} style={{ ...chip, cursor: "pointer", padding: "5px 11px", fontSize: 12, background: mode === m ? C.fern : "#fff", color: mode === m ? "#fff" : C.muted, border: `1px solid ${mode === m ? C.fern : C.line}` }}>{l}</button>))}
+          </div>
+          {mode === "harvest" ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="number" min="0" step="any" value={h.qty} onChange={(e) => setH((s) => ({ ...s, qty: e.target.value }))} placeholder="how much" style={{ ...inpS, flex: "1 1 80px" }} />
+              <select value={h.unit} onChange={(e) => setH((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{H_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+              <input type="date" value={h.date} onChange={(e) => setH((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+              <input value={h.note} onChange={(e) => setH((s) => ({ ...s, note: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && logHarvest(it.write)} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
+              <button onClick={() => logHarvest(it.write)} style={{ ...btn(C.harvest), flex: "0 0 auto" }}><Plus size={14} /> Log pick</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="date" value={care.date} onChange={(e) => setCare((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+              <input value={care.note} onChange={(e) => setCare((s) => ({ ...s, note: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && logCare(it.write)} placeholder="e.g. blood & bone, copper spray, seaweed" style={{ ...inpS, flex: "1 1 150px" }} />
+              <button onClick={() => logCare(it.write)} style={{ ...btn(C.fern), flex: "0 0 auto" }}><Plus size={14} /> Log feed/spray</button>
+            </div>
+          )}
+          {last && <p style={{ fontSize: 11, color: C.muted, margin: "7px 0 0" }}>Last: {fmtDate(last.date)} — {last.type === "harvest" ? `picked${last.qty != null ? ` ${last.qty} ${last.unit || ""}` : ""}` : (last.what || "care")}</p>}
+        </div>}
+      </div>); };
 
   if (!areas.length) return <div style={{ ...card, color: C.muted, fontSize: 13.5 }}>No garden areas yet. Add a garden, orchard or berry patch on the property map (full view) and your plants will show here to log against.</div>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = openArea === s.id; const items = itemsFor(s);
+      {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = openArea === s.id; const usesBeds = SECTION_KINDS[s.kind].uses === "beds";
+        const plantCount = usesBeds ? (s.beds || []).reduce((n, b) => n + bedPlantings(b).filter((p) => !plantingRemoved(p)).length, 0) : (s.plants || []).length;
         return (
         <div key={s.id} style={{ border: `1px solid ${on ? hexA(k.color, .5) : C.line}`, borderRadius: 12, background: C.panel, overflow: "hidden" }}>
-          <button onClick={() => { setOpenArea(on ? null : s.id); setOpenItem(null); }} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: on ? hexA(k.color, .12) : "transparent", border: "none", padding: "11px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => { setOpenArea(on ? null : s.id); setOpenBed(null); setOpenItem(null); }} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: on ? hexA(k.color, .12) : "transparent", border: "none", padding: "11px 12px", display: "flex", alignItems: "center", gap: 10 }}>
             <KI size={18} color={k.color} />
             <span style={{ flex: 1, fontFamily: display, fontSize: 16, fontWeight: 600, color: C.fernDk }}>{s.name}</span>
-            <span style={{ fontSize: 12, color: C.muted }}>{items.length} plant{items.length === 1 ? "" : "s"}</span>
+            <span style={{ fontSize: 12, color: C.muted }}>{usesBeds ? `${(s.beds || []).length} bed${(s.beds || []).length === 1 ? "" : "s"}` : `${plantCount} plant${plantCount === 1 ? "" : "s"}`}</span>
             <span style={{ color: C.muted, fontSize: 14 }}>{on ? "▾" : "▸"}</span>
           </button>
           {on && <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-            {items.length === 0 && <p style={{ fontSize: 12.5, color: C.muted }}>Nothing growing here yet.</p>}
-            {items.map((it) => { const sel = openItem === it.key; const picks = (it.obj.ferts || []).filter((f) => f.type === "harvest"); const cares = (it.obj.ferts || []).filter((f) => f.type !== "harvest" && f.type !== "task"); const last = (it.obj.ferts || [])[(it.obj.ferts || []).length - 1];
-              return (
-              <div key={it.key} style={{ border: `1px solid ${sel ? hexA(C.harvest, .6) : C.line}`, borderRadius: 9, background: sel ? hexA(C.harvest, .07) : C.panel2, overflow: "hidden" }}>
-                <button onClick={() => { setOpenItem(sel ? null : it.key); }} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", padding: "9px 11px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ flex: 1, fontSize: 14, color: C.ink, fontWeight: 600 }}>{it.plant}{it.sub ? <span style={{ fontWeight: 400, color: C.muted, fontSize: 12 }}> · {it.sub}</span> : null}</span>
-                  {mode === "harvest" ? (picks.length > 0 && <span style={{ fontSize: 11, color: C.muted }}>{picks.length} pick{picks.length === 1 ? "" : "s"}</span>)
-                    : (cares.length > 0 && <span style={{ fontSize: 11, color: C.muted }}>{cares.length} fed</span>)}
-                  <span style={{ color: sel ? C.harvest : C.muted, fontSize: 12 }}>{sel ? "▾" : "log ›"}</span>
-                </button>
-                {sel && <div style={{ padding: "0 11px 11px" }}>
-                  {mode === "harvest" ? (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      <input type="number" min="0" step="any" value={h.qty} onChange={(e) => setH((s) => ({ ...s, qty: e.target.value }))} placeholder="how much" style={{ ...inpS, flex: "1 1 80px" }} />
-                      <select value={h.unit} onChange={(e) => setH((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{H_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
-                      <input type="date" value={h.date} onChange={(e) => setH((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
-                      <input value={h.note} onChange={(e) => setH((s) => ({ ...s, note: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && logHarvest(it)} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
-                      <button onClick={() => logHarvest(it)} style={{ ...btn(C.harvest), flex: "0 0 auto" }}><Plus size={14} /> Log pick</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      <input type="date" value={care.date} onChange={(e) => setCare((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
-                      <input value={care.note} onChange={(e) => setCare((s) => ({ ...s, note: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && logCare(it)} placeholder="e.g. blood & bone, copper spray, seaweed" style={{ ...inpS, flex: "1 1 150px" }} />
-                      <button onClick={() => logCare(it)} style={{ ...btn(C.fern), flex: "0 0 auto" }}><Plus size={14} /> Log feed/spray</button>
-                    </div>
-                  )}
-                  {last && <p style={{ fontSize: 11, color: C.muted, margin: "7px 0 0" }}>Last: {fmtDate(last.date)} — {last.type === "harvest" ? `picked${last.qty != null ? ` ${last.qty} ${last.unit || ""}` : ""}` : (last.what || "care")}</p>}
-                </div>}
-              </div>); })}
+            {usesBeds ? (
+              (s.beds || []).length === 0 ? <p style={{ fontSize: 12.5, color: C.muted }}>No beds here yet.</p>
+              : (s.beds || []).map((b) => { const bOn = openBed === b.id; const plist = bedPlantings(b).filter((p) => !plantingRemoved(p));
+                return (
+                <div key={b.id} style={{ border: `1px solid ${bOn ? hexA(k.color, .4) : C.line}`, borderRadius: 10, background: bOn ? hexA(k.color, .06) : "#fff", overflow: "hidden" }}>
+                  <button onClick={() => { setOpenBed(bOn ? null : b.id); setOpenItem(null); }} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", padding: "9px 11px", display: "flex", alignItems: "center", gap: 8 }}>
+                    <Grid3x3 size={14} color={k.color} />
+                    <span style={{ flex: 1, fontSize: 14, color: C.fernDk, fontWeight: 600 }}>{b.name}</span>
+                    <span style={{ fontSize: 11, color: C.muted }}>{plist.length} group{plist.length === 1 ? "" : "s"}</span>
+                    <span style={{ color: C.muted, fontSize: 13 }}>{bOn ? "▾" : "▸"}</span>
+                  </button>
+                  {bOn && <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 5 }}>
+                    {plist.length === 0 ? <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Nothing growing in this bed.</p>
+                      : plist.map((p) => leaf({ key: p.id, plant: p.plant, sub: p.variety || "", obj: p, write: (e) => addToPlanting(s.id, b.id, p.id, e) }))}
+                  </div>}
+                </div>); })
+            ) : (
+              (s.plants || []).length === 0 ? <p style={{ fontSize: 12.5, color: C.muted }}>Nothing planted here yet.</p>
+              : (s.plants || []).map((p) => leaf({ key: p.id, plant: p.plant, sub: "", obj: p, write: (e) => addToMarker(s.id, p.id, e) }))
+            )}
           </div>}
         </div>); })}
     </div>
