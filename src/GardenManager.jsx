@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bug, Bird
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bird
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -218,7 +218,6 @@ const SECTION_KINDS = {
   berry:      { label:"Berry patch",       icon:Cherry,        color:"#A23E55", uses:"plants" },
   paddock:    { label:"Paddock",           icon:Fence,         color:"#6E8B5A", uses:"stock", grazes:true },
   coop:       { label:"Coop & run",        icon:Bird,           color:"#C28F2E", uses:"stock" },
-  apiary:     { label:"Apiary (bees)",     icon:Bug,           color:"#B8902E", uses:"hives" },
 };
 // livestock species — which areas they live in, and the usual mob classes
 const SPECIES = {
@@ -231,10 +230,9 @@ const SPECIES = {
 const SP_MIGRATE = { broiler: "chicken", layer: "chicken" };
 const CHICKEN_KLASS_FIX = { Hens: "Hen", Pullets: "Pullet", Broilers: "Broiler", Roosters: "Rooster", Chicks: "Chick" };
 const speciesFor = (kind) => Object.entries(SPECIES).filter(([, v]) => v.areas.includes(kind)).map(([k, v]) => ({ key: k, ...v }));
-const individualised = (m) => !!(m && m.individuals && m.individuals.length);
-const mobHead = (m) => (m && Array.isArray(m.individuals)) ? m.individuals.length : (m && m.count != null ? m.count : 0);
+const mobHead = (m) => (m && Array.isArray(m.individuals)) ? m.individuals.length : 0;
 // drop individualised mobs that have been emptied of animals, unless they carry whole-mob records
-const pruneEmptyMobs = (sections) => sections.map((s) => ({ ...s, mobs: (s.mobs || []).filter((m) => !(Array.isArray(m.individuals) && m.individuals.length === 0 && (m.count == null || m.count === 0) && (m.ferts || []).length === 0 && (m.history || []).length === 0)) }));
+const pruneEmptyMobs = (sections) => sections.map((s) => ({ ...s, mobs: (s.mobs || []).filter((m) => !(Array.isArray(m.individuals) && m.individuals.length === 0 && (m.ferts || []).length === 0 && (m.history || []).length === 0)) }));
 
 // species seasonal jobs. mode "calendar" = recurs in set months; "interval" = due N units after last done (read from the mob's journal). Months are southern-hemisphere.
 const LIVESTOCK_TASKS = {
@@ -334,7 +332,6 @@ function sectionCountLabel(s) {
   let n, word;
   if (k.uses === "beds") { n = (s.beds || []).length; word = "bed"; }
   else if (k.uses === "plants") { n = (s.plants || []).length; word = "plant"; }
-  else if (k.uses === "hives") { n = (s.hives || []).length; word = "hive"; }
   else { n = (s.mobs || []).length; word = "mob"; }
   return { n, text: n ? `${n} ${word}${n === 1 ? "" : "s"}` : "empty" };
 }
@@ -342,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 68";
+const APP_BUILD = "2026-06-25 · build 72";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -378,7 +375,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {} };
+const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [] } };
 
 function normalize(d) {
   if (!d) return blank;
@@ -416,6 +413,8 @@ function normalize(d) {
   });
   base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
+  base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
+  base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [] };
   base.sections = pruneEmptyMobs(base.sections);
   return base;
 }
@@ -919,7 +918,7 @@ export default function GardenManager() {
 
       <main style={{ padding: "18px clamp(12px, 4vw, 18px)" }}>
         {tab === "map" && <PropertyTab {...{ data, setData, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }} />}
-        {tab === "stock" && hasStock && <StockOverview data={data} setData={setData} setTab={setTab} setNav={setNav} setSel={setSel} display={display} />}
+        {tab === "stock" && hasStock && <StockPage data={data} setData={setData} display={display} focusId={null} />}
         {tab === "weather" && <WeatherView place={place} hemi={hemi} month={month} display={display} />}
         {tab === "season" && <DoNowView data={data} setData={setData} month={month} hemi={hemi} display={display} setTab={setTab} setNav={setNav} setSel={setSel} />}
         {tab === "rotation" && <RotationView data={data} setData={setData} month={month} display={display} setTab={setTab} setNav={setNav} />}
@@ -1217,33 +1216,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
 
-  if (k.uses === "stock") return <StockArea {...{ data, setData, section, setNav, sel, setSel, display }} />;
-
-  if (k.uses === "hives") {
-    const KindIcon = k.icon;
-    return (
-      <div>
-        <button onClick={() => { setNav({ level: "overview" }); setSel(null); }} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-          <KindIcon size={20} color={k.color} />
-          <input value={section.name} onChange={(e) => patchSection({ name: e.target.value })}
-            style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 160px" }} />
-          <span style={{ ...chip, background: hexA(k.color, .2), color: C.fernDk, border: "none" }}>{k.label}</span>
-        </div>
-        <div style={card}>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <Info size={16} color={C.sage} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>
-              This {k.label.toLowerCase()} sits on your property map — size and angle it from the property page's <strong>Edit layout</strong>, alongside your garden areas. {k.grazes ? "Mobs and grazing rotation" : k.uses === "hives" ? "Hives and honey tracking" : "Animals and their journal"} arrive in the next update.
-            </div>
-          </div>
-          <label style={{ fontSize: 12, color: C.muted, display: "block", margin: "14px 0 4px" }}>{k.uses === "hives" ? "Apiary notes — site, sun, forage nearby…" : k.grazes ? "Paddock notes — pasture, water, shelter, hazards…" : "Notes — feed, water, shelter, cleaning…"}</label>
-          <textarea value={section.notes || ""} onChange={(e) => patchSection({ notes: e.target.value })}
-            style={{ width: "100%", minHeight: 90, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
-        </div>
-      </div>
-    );
-  }
+  if (k.uses === "stock") return <StockPage data={data} setData={setData} display={display} focusId={section.id} onBack={() => { setNav({ level: "overview" }); setSel(null); }} />;
 
   const patchItem = (id, p) => {
     if (usesBeds) patchSection({ beds: (section.beds || []).map((b) => b.id === id ? { ...b, ...p } : b) });
@@ -1581,92 +1554,49 @@ function PlantGlyph({ icon }) {
 }
 
 // ===================== bed grid (split crops) =====================
-function StockOverview({ data, setData, setTab, setNav, setSel, display }) {
+function StockPage({ data, setData, display, focusId, onBack }) {
   const areas = data.sections.filter((s) => SECTION_KINDS[s.kind].uses === "stock");
-  const allMobs = areas.flatMap((s) => (s.mobs || []).map((m) => ({ ...m, sectionId: s.id, area: s.name })));
-  const totalHead = allMobs.reduce((n, m) => n + mobHead(m), 0);
-
-  const moveMobToArea = (mobId, fromId, toId) => setData((d) => { let moved = null;
-    const secs = d.sections.map((s) => { if (s.id !== fromId) return s; const mm = (s.mobs || []).find((m) => m.id === mobId);
-      if (mm) moved = { ...mm, placed: todayISO(), history: [...(mm.history || []), { sectionId: fromId, in: mm.placed, out: todayISO() }] };
-      return { ...s, mobs: (s.mobs || []).filter((m) => m.id !== mobId) }; });
-    return { ...d, sections: secs.map((s) => s.id === toId && moved ? { ...s, mobs: [...(s.mobs || []), moved] } : s) }; });
-  const moveAnimal = (fromMobId, aId, toMobId) => setData((d) => { let moved = null;
-    let secs = d.sections.map((s) => ({ ...s, mobs: (s.mobs || []).map((m) => { if (m.id !== fromMobId) return m; const a = (m.individuals || []).find((x) => x.id === aId); if (a) moved = a; return { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) }; }) }));
-    secs = secs.map((s) => ({ ...s, mobs: (s.mobs || []).map((m) => m.id === toMobId && moved ? { ...m, individuals: [...(m.individuals || []), moved] } : m) }));
-    return { ...d, sections: pruneEmptyMobs(secs) }; });
-  const splitAnimalNew = (sectionId, mobId, aId) => setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => { if (s.id !== sectionId) return s;
-      const src = (s.mobs || []).find((m) => m.id === mobId); const a = (src?.individuals || []).find((x) => x.id === aId); if (!a) return s;
-      const mobsList = (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) });
-      const nm = { id: uid(), species: src.species, klass: a.klass || src.klass, breed: src.breed || a.breed || "", name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
-      return { ...s, mobs: [...mobsList, nm] }; })) }));
-  const openMob = (sectionId, mobId) => { setSel(null); setTab("map"); setNav({ level: "section", sectionId, bedId: null }); setTimeout(() => setSel({ kind: "mob", sectionId, id: mobId }), 0); };
+  const [expanded, setExpanded] = useState(() => focusId ? { [focusId]: true } : {});
+  const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
+  const totalHead = areas.flatMap((s) => s.mobs || []).reduce((n, m) => n + mobHead(m), 0);
 
   return (
     <div>
+      {onBack && <button onClick={onBack} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-        <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Stock overview</h2>
-        <span style={{ ...chip, background: hexA(C.fern, .14), color: C.fernDk, border: "none" }}>{totalHead} head · {allMobs.length} mob{allMobs.length === 1 ? "" : "s"}</span>
+        <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Stock</h2>
+        {areas.length > 0 && <span style={{ ...chip, background: hexA(C.fern, .14), color: C.fernDk, border: "none" }}>{totalHead} head</span>}
       </div>
-      <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>Your whole block in one place. Shift a mob to another paddock, or move and split individual animals between mobs — tap to reorganise. Open a mob for its full journal.</p>
+      <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>Every paddock and coop in one place — open any to manage its mobs and animals, or several at once to move stock between them.</p>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const ms = s.mobs || []; const head = ms.reduce((n, m) => n + mobHead(m), 0);
-          const mobTargets = areas.filter((t) => t.id !== s.id);
-          return (
-          <div key={s.id} style={card}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: ms.length ? 10 : 0 }}>
-              <KI size={17} color={k.color} />
-              <strong style={{ fontFamily: display, fontSize: 16, flex: 1 }}>{s.name}</strong>
-              <span style={{ fontSize: 12, color: C.muted }}>{head} head</span>
-            </div>
-            {ms.length === 0 && <p style={{ fontSize: 12.5, color: C.muted, margin: "6px 0 0" }}>No animals here.</p>}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {ms.map((m) => { const sp = SPECIES[m.species]; const areaTargetsForMob = mobTargets.filter((t) => (sp?.areas || []).includes(t.kind));
-                return (
-                <div key={m.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.panel2 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 19 }}>{sp?.emoji || "🐾"}</span>
-                    <span style={{ flex: 1, fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{mobHead(m)} {m.klass}{m.name ? ` · ${m.name}` : ""}</span>
-                    <button onClick={() => openMob(s.id, m.id)} style={linkBtn}>open</button>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11.5, color: C.muted }}>Move mob to</span>
-                    {areaTargetsForMob.length ? (
-                      <select value="" onChange={(e) => e.target.value && moveMobToArea(m.id, s.id, e.target.value)} style={{ ...inpS, width: "auto", flex: "1 1 140px" }}>
-                        <option value="">— area —</option>
-                        {areaTargetsForMob.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </select>
-                    ) : <span style={{ fontSize: 11.5, color: C.muted }}>(no other {s.kind === "coop" ? "coops" : "paddocks"})</span>}
-                  </div>
-
-                  {(m.individuals || []).length > 0 && (
-                    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-                      {m.individuals.map((a) => { const animalTargets = allMobs.filter((tm) => tm.species === m.species && tm.id !== m.id);
-                        return (
-                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 6, borderLeft: `2px solid ${hexA(k.color, .4)}` }}>
-                          <span style={{ flex: 1, fontSize: 12.5, color: C.ink }}>{a.name}{a.klass && a.klass !== m.klass ? ` · ${a.klass}` : ""}</span>
-                          <select value="" onChange={(e) => { const v = e.target.value; if (v === "__new__") splitAnimalNew(s.id, m.id, a.id); else if (v) moveAnimal(m.id, a.id, v); }} style={{ ...inpS, width: "auto", flex: "0 1 160px", padding: "4px 7px", fontSize: 12 }}>
-                            <option value="">move ▸</option>
-                            <option value="__new__">➕ New mob (here)</option>
-                            {animalTargets.map((tm) => <option key={tm.id} value={tm.id}>{tm.name || SPECIES[tm.species]?.label} · {tm.klass} ({tm.area})</option>)}
-                          </select>
-                        </div>); })}
-                    </div>)}
-                </div>); })}
-            </div>
-          </div>); })}
-      </div>
-      <p style={{ fontSize: 12, color: C.muted, marginTop: 14, lineHeight: 1.5 }}>Moving a mob records the paddock it left, feeding the grazing planner. Emptied mobs tidy themselves away. To log health, weights or products, open a mob.</p>
+      {areas.length === 0 ? (
+        <div style={{ ...card, color: C.muted, fontSize: 13.5 }}>No paddocks or coops yet. Add one on the property map and it'll appear here.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = !!expanded[s.id]; const head = (s.mobs || []).reduce((n, m) => n + mobHead(m), 0);
+            return (
+            <div key={s.id} style={{ border: `1px solid ${on ? hexA(k.color, .5) : C.line}`, borderRadius: 12, background: C.panel, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: on ? hexA(k.color, .12) : "transparent" }}>
+                <KI size={18} color={k.color} />
+                <input value={s.name} onChange={(e) => patchSection(s.id, { name: e.target.value })}
+                  style={{ flex: 1, fontFamily: display, fontSize: 16, fontWeight: 600, border: "none", background: "transparent", color: C.fernDk, outline: "none", minWidth: 80 }} />
+                <span style={{ fontSize: 12, color: C.muted }}>{head} head</span>
+                <button onClick={() => setExpanded((e) => ({ ...e, [s.id]: !e[s.id] }))} style={{ ...iconBtn, color: C.fern, fontSize: 15 }}>{on ? "▾" : "▸"}</button>
+              </div>
+              {on && <div style={{ padding: "0 12px 14px" }}><AreaStock data={data} setData={setData} section={s} display={display} /></div>}
+            </div>); })}
+        </div>
+      )}
     </div>
   );
 }
 
-function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
+function AreaStock({ data, setData, section, display }) {
   const k = SECTION_KINDS[section.kind];
   const KindIcon = k.icon;
   const mobs = section.mobs || [];
   const [adding, setAdding] = useState(false);
+  const [selMobId, setSelMobId] = useState(null);
   const [log, setLog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [openAnimal, setOpenAnimal] = useState(null);
   const [aLog, setALog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
@@ -1680,12 +1610,12 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const rememberBreed = (species, val) => { const v = (val || "").trim(); if (!v || breedOptions(species).includes(v)) return;
     setData((d) => ({ ...d, customBreeds: { ...(d.customBreeds || {}), [species]: [...(((d.customBreeds || {})[species]) || []), v] } })); };
   const patchMob = (id, p) => patchSection({ mobs: mobs.map((m) => m.id === id ? { ...m, ...p } : m) });
-  const removeMob = (id) => { patchSection({ mobs: mobs.filter((m) => m.id !== id) }); setSel(null); };
+  const removeMob = (id) => { patchSection({ mobs: mobs.filter((m) => m.id !== id) }); setSelMobId(null); setOpenAnimal(null); };
   const addMob = () => { const sp = SPECIES[f.species]; if (!sp) return; const klass = f.klass || sp.classes[0]; const n = f.count === "" ? 0 : Math.max(0, Number(f.count) || 0); const breed = f.breed.trim();
     const individuals = Array.from({ length: n }, (_, i) => ({ id: uid(), name: `${klass} ${i + 1}`, klass, breed, born: "", notes: "", ferts: [] }));
     const m = { id: uid(), species: f.species, klass, breed, name: f.name.trim(), placed: todayISO(), notes: "", ferts: [], history: [], individuals };
     patchSection({ mobs: [...mobs, m] }); setAdding(false); setF({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" });
-    setSel({ kind: "mob", sectionId: section.id, id: m.id }); };
+    setSelMobId(m.id); };
   const addIndividuals = (mobId, n) => { const num = Math.max(1, Number(n) || 1); patchSection({ mobs: mobs.map((m) => { if (m.id !== mobId) return m; const list = m.individuals || []; const klass = m.klass;
       const extra = Array.from({ length: num }, (_, i) => ({ id: uid(), name: `${klass} ${list.length + i + 1}`, klass, breed: m.breed || "", born: "", notes: "", ferts: [] }));
       return { ...m, individuals: [...list, ...extra] }; }) }); };
@@ -1697,17 +1627,14 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const moveMob = (mob, toId) => { setData((d) => ({ ...d, sections: d.sections.map((s) => {
       if (s.id === section.id) return { ...s, mobs: (s.mobs || []).filter((m) => m.id !== mob.id) };
       if (s.id === toId) { const moved = { ...mob, placed: todayISO(), history: [...(mob.history || []), { sectionId: section.id, in: mob.placed, out: todayISO() }] }; return { ...s, mobs: [...(s.mobs || []), moved] }; }
-      return s; }) })); setSel(null); };
+      return s; }) })); setSelMobId(null); setOpenAnimal(null); };
   const pushEntry = (mobId, animalId, type, whatRaw, qtyRaw, reset, date) => { const spec = STOCK_LOG[type] || {};
     const e = { id: uid(), date: date || todayISO(), type, what: (whatRaw || "").trim(), qty: qtyRaw === "" ? null : Number(qtyRaw), unit: spec.unit };
     if (!e.what && e.qty == null) return;
     setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
       if (m.id !== mobId) return m;
       if (animalId) return { ...m, individuals: (m.individuals || []).map((a) => a.id !== animalId ? a : { ...a, ferts: [...(a.ferts || []), e] }) };
-      let count = m.count;
-      if (!individualised(m) && type === "birth" && e.qty != null) count = (count || 0) + e.qty;
-      if (!individualised(m) && (type === "death" || type === "sold") && e.qty != null) count = Math.max(0, (count || 0) - e.qty);
-      return { ...m, count, ferts: [...(m.ferts || []), e] }; }) }) }));
+      return { ...m, ferts: [...(m.ferts || []), e] }; }) }) }));
     reset && reset(); };
   const removeEntry = (mobId, animalId, id) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
       if (m.id !== mobId) return m;
@@ -1737,14 +1664,13 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
       const mobsList = (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) });
       const nm = { id: newId, species: src.species, klass: a.klass || src.klass, breed: src.breed || a.breed || "", name: "", placed: todayISO(), notes: "", ferts: [], history: [], individuals: [a] };
       return { ...s, mobs: [...mobsList, nm] }; })) }));
-    setOpenAnimal(null); setSel({ kind: "mob", sectionId: section.id, id: newId }); };
+    setOpenAnimal(null); setSelMobId(newId); };
 
   const daysHere = (m) => Math.max(0, Math.round((Date.now() - new Date(m.placed).getTime()) / 86400000));
   const classBreakdown = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
     const order = SPECIES[m.species]?.classes || []; const keys = Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
     return keys.map((c) => `${counts[c]} ${c}`).join(" · ") || "no animals"; };
-  const selMob = sel?.kind === "mob" && sel.sectionId === section.id ? mobs.find((m) => m.id === sel.id) : null;
-  const totalHead = mobs.reduce((n, m) => n + mobHead(m), 0);
+  const selMob = mobs.find((m) => m.id === selMobId) || null;
   const sp = selMob ? SPECIES[selMob.species] : null;
   const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t)) : [];
   const allowedIndiv = allowed.filter((t) => t !== "eggs");
@@ -1767,14 +1693,6 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
 
   return (
     <div>
-      <button onClick={() => { setNav({ level: "overview" }); setSel(null); }} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <KindIcon size={20} color={k.color} />
-        <input value={section.name} onChange={(e) => patchSection({ name: e.target.value })}
-          style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 160px" }} />
-        <span style={{ ...chip, background: hexA(k.color, .2), color: C.fernDk, border: "none" }}>{mobs.length ? `${totalHead} head` : k.label}</span>
-      </div>
-
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
         {/* LEFT — mobs, expanding inline */}
         <div style={{ flex: "1 1 340px", minWidth: 300 }}>
@@ -1818,7 +1736,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
             {mobs.map((m) => { const spm = SPECIES[m.species]; const on = selMob?.id === m.id;
               return (
               <div key={m.id} style={{ border: `1px solid ${on ? hexA(C.fern, .5) : C.line}`, borderRadius: 10, background: on ? hexA(C.fern, .08) : C.panel, overflow: "hidden" }}>
-                <button onClick={() => { setOpenAnimal(null); setSel(on ? null : { kind: "mob", sectionId: section.id, id: m.id }); }}
+                <button onClick={() => { setOpenAnimal(null); setSelMobId(on ? null : m.id); }}
                   style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 22 }}>{spm?.emoji || "🐾"}</span>
                   <span style={{ flex: 1 }}>
@@ -1941,7 +1859,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                 <div style={{ flex: "1 1 110px" }}><label style={lblS}>Sire (father)</label>
                   <input list="kin-list" value={openA.sire?.name || ""} onChange={(e) => setParent("sire", e.target.value)} style={inpS} placeholder="optional" /></div>
               </div>
-              <datalist id="kin-list">{[...new Map(kin.filter((x) => x.id !== openA.id).map((x) => [x.name, x])).values()].map((x) => <option key={x.id} value={x.name}>{x.klass}{x.archived ? " · past" : ""}</option>)}</datalist>
+              <datalist id="kin-list">{(() => { const seen = {}; const list = []; kin.forEach((x) => { if (x.id !== openA.id && !seen[x.name]) { seen[x.name] = 1; list.push(x); } }); return list.map((x) => <option key={x.id} value={x.name}>{x.klass}{x.archived ? " · past" : ""}</option>); })()}</datalist>
               {offspring.length > 0 && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}><strong style={{ color: C.fern }}>Offspring:</strong> {offspring.join(", ")}</div>}
               <label style={lblS}>Notes</label>
               <input value={openA.notes || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
@@ -1978,7 +1896,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
               <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="date" value={aLog.date} onChange={(e) => setALog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
                 {!STOCK_LOG[aType]?.product && <input value={aLog.what} onChange={(e) => setALog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, openA.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} placeholder={aType === "weight" ? "condition / note" : aType === "drench" ? "product" : "details"} style={{ flex: "1 1 80px", ...inpS }} />}
-                {(STOCK_LOG[aType]?.unit || STOCK_LOG[aType]?.count) && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? "1 1 80px" : "0 0 56px", ...inpS }} />}
+                {STOCK_LOG[aType]?.unit && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? "1 1 80px" : "0 0 56px", ...inpS }} />}
                 <button onClick={() => pushEntry(selMob.id, openA.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} style={btn(C.fern)}><Plus size={14} /></button>
               </div>
 
@@ -3337,6 +3255,16 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
 function ReportView({ data, setData, month, hemi, display }) {
   const lib = useLib();
   const today = new Date(); const tk = dayKey(today);
+  const [feedDraft, setFeedDraft] = useState({ date: todayISO(), cost: "", kg: "", note: "" });
+  const [saleDraft, setSaleDraft] = useState({ date: todayISO(), eggs: "", amount: "", note: "" });
+  const money = (n) => "$" + (Number(n) || 0).toFixed(2);
+  const addFeed = () => { const cost = Number(feedDraft.cost) || 0; const kg = feedDraft.kg === "" ? null : Number(feedDraft.kg); if (!cost && kg == null) return;
+    setData((d) => ({ ...d, eggLedger: { feed: [...((d.eggLedger || {}).feed || []), { id: uid(), date: feedDraft.date || todayISO(), cost, kg, note: feedDraft.note.trim() }], sales: (d.eggLedger || {}).sales || [] } }));
+    setFeedDraft({ date: todayISO(), cost: "", kg: "", note: "" }); };
+  const addSale = () => { const eggs = Number(saleDraft.eggs) || 0; const amount = Number(saleDraft.amount) || 0; if (!eggs && !amount) return;
+    setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: [...((d.eggLedger || {}).sales || []), { id: uid(), date: saleDraft.date || todayISO(), eggs, amount, note: saleDraft.note.trim() }] } }));
+    setSaleDraft({ date: todayISO(), eggs: "", amount: "", note: "" }); };
+  const removeLedger = (kind, id) => setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: (d.eggLedger || {}).sales || [], [kind]: ((d.eggLedger || {})[kind] || []).filter((x) => x.id !== id) } }));
   const season = seasonOf(month, hemi);
   const nextMonth = (month % 12) + 1;
   const curYM = todayISO().slice(0, 7);
@@ -3535,6 +3463,14 @@ function ReportView({ data, setData, month, hemi, display }) {
           if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${rec.klass} · ${rec.name} (archived)`, sp: stockLib[rec.species]?.label }); }));
         treatments.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
+        let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
+        const inWin = (x) => { const k = dayKey(new Date(x.date)); return k >= winFrom && k <= winTo; };
+        const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin);
+        const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
+        const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
+        const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
+        const net = revenue - feedCost; const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length;
+        const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         return (
           <div style={{ ...card, background: "#fff" }}>
             <div style={{ fontFamily: display, fontSize: 21, fontWeight: 600, color: C.fernDk }}>{data.propertyName} — livestock</div>
@@ -3551,6 +3487,47 @@ function ReportView({ data, setData, month, hemi, display }) {
             {Object.keys(products).length ? Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|");
               return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })
               : <div style={{ ...row, color: C.muted }}>No products logged in this window. Log eggs, wool, milk or meat from a mob's journal.</div>}
+
+            {hasChooks && <>
+              <H>Eggs — in & out ({windowLabel})</H>
+              <div style={row}>🥚 <strong>{eggsLaid}</strong> laid · 🏷️ {eggsSold} sold · 🏡 {eggsKept} kept (eaten/spare)</div>
+              <div style={row}>💰 In <strong>{money(revenue)}</strong> · 🌾 Out <strong>{money(feedCost)}</strong> · Net <strong style={{ color: net >= 0 ? C.fern : C.beet }}>{money(net)}</strong></div>
+              {costPerEgg != null ? <>
+                <div style={row}>Running cost per egg: <strong>{money(costPerEgg)}</strong> · about {money(costPerEgg * 12)}/dozen</div>
+                <div style={row}>The {eggsKept} egg{eggsKept === 1 ? "" : "s"} you kept cost about <strong>{money(keptCost)}</strong> to produce ({eggsKept} × {money(costPerEgg)})</div>
+              </> : <div style={{ ...row, color: C.muted }}>Log feed purchases and eggs laid (from a coop mob's journal) to see a running cost per egg.</div>}
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                <div style={{ flex: "1 1 240px", border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.panel2 }}>
+                  <strong style={{ fontSize: 12.5, color: C.fernDk }}>🌾 Feed purchased</strong>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    <input type="date" value={feedDraft.date} onChange={(e) => setFeedDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+                    <input type="number" min="0" step="any" value={feedDraft.cost} onChange={(e) => setFeedDraft((s) => ({ ...s, cost: e.target.value }))} placeholder="$ cost" style={{ ...inpS, flex: "1 1 70px" }} />
+                    <input type="number" min="0" step="any" value={feedDraft.kg} onChange={(e) => setFeedDraft((s) => ({ ...s, kg: e.target.value }))} placeholder="kg (opt)" style={{ ...inpS, flex: "1 1 70px" }} />
+                  </div>
+                  <input value={feedDraft.note} onChange={(e) => setFeedDraft((s) => ({ ...s, note: e.target.value }))} placeholder="supplier / type (optional)" style={{ ...inpS, marginTop: 6 }} />
+                  <button onClick={addFeed} style={{ ...btn(C.soil), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add feed cost</button>
+                </div>
+                <div style={{ flex: "1 1 240px", border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.panel2 }}>
+                  <strong style={{ fontSize: 12.5, color: C.fernDk }}>🥚 Eggs sold</strong>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    <input type="date" value={saleDraft.date} onChange={(e) => setSaleDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+                    <input type="number" min="0" step="1" value={saleDraft.eggs} onChange={(e) => setSaleDraft((s) => ({ ...s, eggs: e.target.value }))} placeholder="eggs" style={{ ...inpS, flex: "1 1 70px" }} />
+                    <input type="number" min="0" step="any" value={saleDraft.amount} onChange={(e) => setSaleDraft((s) => ({ ...s, amount: e.target.value }))} placeholder="$ in" style={{ ...inpS, flex: "1 1 70px" }} />
+                  </div>
+                  <input value={saleDraft.note} onChange={(e) => setSaleDraft((s) => ({ ...s, note: e.target.value }))} placeholder="buyer (optional)" style={{ ...inpS, marginTop: 6 }} />
+                  <button onClick={addSale} style={{ ...btn(C.harvest), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add egg sale</button>
+                </div>
+              </div>
+              {ledgerRows.length > 0 && <>
+                <div style={{ ...row, color: C.muted, marginTop: 8 }}>Entries in this window:</div>
+                {ledgerRows.slice(0, 40).map((x) => (
+                  <div key={x.kind + x.id} style={{ ...row, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
+                    <button onClick={() => removeLedger(x.kind, x.id)} style={iconBtn}><Trash2 size={12} /></button>
+                  </div>))}
+              </>}
+            </>}
 
             <H>Treatments & events ({windowLabel})</H>
             {treatList.length ? treatList.slice(0, 50).map((t, i) => (
