@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bug
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -216,12 +216,24 @@ const SECTION_KINDS = {
   greenhouse: { label:"Greenhouse",        icon:Home,          color:"#7FA05B", uses:"beds" },
   orchard:    { label:"Orchard",           icon:TreeDeciduous, color:"#5E7E4E", uses:"plants" },
   berry:      { label:"Berry patch",       icon:Cherry,        color:"#A23E55", uses:"plants" },
+  paddock:    { label:"Paddock",           icon:Fence,         color:"#6E8B5A", uses:"stock", grazes:true },
+  coop:       { label:"Coop & run",        icon:Egg,           color:"#C28F2E", uses:"stock" },
+  apiary:     { label:"Apiary (bees)",     icon:Bug,           color:"#B8902E", uses:"hives" },
 };
+function sectionCountLabel(s) {
+  const k = SECTION_KINDS[s.kind];
+  let n, word;
+  if (k.uses === "beds") { n = (s.beds || []).length; word = "bed"; }
+  else if (k.uses === "plants") { n = (s.plants || []).length; word = "plant"; }
+  else if (k.uses === "hives") { n = (s.hives || []).length; word = "hive"; }
+  else { n = (s.mobs || []).length; word = "mob"; }
+  return { n, text: n ? `${n} ${word}${n === 1 ? "" : "s"}` : "empty" };
+}
 
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 47";
+const APP_BUILD = "2026-06-25 · build 48";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1011,8 +1023,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
           <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area sizes &amp; angle</strong>
           {data.dimM?.w ? <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>Type an exact size (or drag the corner on the map), and rotate any area that doesn't sit square to the photo.</p>
             : <p style={{ fontSize: 11.5, color: C.beet, margin: "3px 0 8px" }}>Set the whole-property size in Property settings first, then you can size each area in metres.</p>}
-          {data.sections.map((s) => { const sk = SECTION_KINDS[s.kind]; const cnt = sk.uses === "beds" ? (s.beds || []).length : (s.plants || []).length;
-            const note = cnt ? `${cnt} ${sk.uses === "beds" ? "bed" + (cnt === 1 ? "" : "s") : "plant" + (cnt === 1 ? "" : "s")}` : "empty";
+          {data.sections.map((s) => { const sk = SECTION_KINDS[s.kind]; const note = sectionCountLabel(s).text;
             return (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12.5, color: C.ink, minWidth: 120, fontWeight: 600 }}>{s.name}</span>
@@ -1033,7 +1044,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
             </div>
           </div>)}>
         {data.sections.map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
-          const count = k.uses === "beds" ? (s.beds || []).length : (s.plants || []).length;
+          const count = sectionCountLabel(s).text;
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
             <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
@@ -1043,7 +1054,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
-                <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count} {k.uses === "beds" ? "bed" + (count===1?"":"s") : "plant" + (count===1?"":"s")}{dim ? ` · ${dim}` : ""}</span>
+                <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
                 {editMode && !s.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: 2, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>}
               </div>
             </div>
@@ -1077,6 +1088,32 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const mapW = MAP_W[section.mapSize || data.mapSize] || MAP_W.medium;
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
+
+  if (k.uses === "stock" || k.uses === "hives") {
+    const KindIcon = k.icon;
+    return (
+      <div>
+        <button onClick={() => { setNav({ level: "overview" }); setSel(null); }} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <KindIcon size={20} color={k.color} />
+          <input value={section.name} onChange={(e) => patchSection({ name: e.target.value })}
+            style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 160px" }} />
+          <span style={{ ...chip, background: hexA(k.color, .2), color: C.fernDk, border: "none" }}>{k.label}</span>
+        </div>
+        <div style={card}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <Info size={16} color={C.sage} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>
+              This {k.label.toLowerCase()} sits on your property map — size and angle it from the property page's <strong>Edit layout</strong>, alongside your garden areas. {k.grazes ? "Mobs and grazing rotation" : k.uses === "hives" ? "Hives and honey tracking" : "Animals and their journal"} arrive in the next update.
+            </div>
+          </div>
+          <label style={{ fontSize: 12, color: C.muted, display: "block", margin: "14px 0 4px" }}>{k.uses === "hives" ? "Apiary notes — site, sun, forage nearby…" : k.grazes ? "Paddock notes — pasture, water, shelter, hazards…" : "Notes — feed, water, shelter, cleaning…"}</label>
+          <textarea value={section.notes || ""} onChange={(e) => patchSection({ notes: e.target.value })}
+            style={{ width: "100%", minHeight: 90, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
+        </div>
+      </div>
+    );
+  }
 
   const patchItem = (id, p) => {
     if (usesBeds) patchSection({ beds: (section.beds || []).map((b) => b.id === id ? { ...b, ...p } : b) });
@@ -2749,8 +2786,8 @@ function ReportView({ data, setData, month, hemi, display }) {
 
         {on.glance && <><H>Garden at a glance</H>
           <div style={row}>{sections.length} section{sections.length === 1 ? "" : "s"} · {totalBeds} vegetable bed{totalBeds === 1 ? "" : "s"} · {totalPlants} tree{totalPlants === 1 ? "" : "s"} & bushes</div>
-          {sections.map((s) => { const k = SECTION_KINDS[s.kind]; const cnt = k.uses === "beds" ? (s.beds || []).length : (s.plants || []).length;
-            return <div key={s.id} style={row}>• <strong>{s.name}</strong> ({k.label}) — {cnt} {k.uses === "beds" ? "bed" + (cnt === 1 ? "" : "s") : "plant" + (cnt === 1 ? "" : "s")}</div>; })}
+          {sections.map((s) => { const k = SECTION_KINDS[s.kind];
+            return <div key={s.id} style={row}>• <strong>{s.name}</strong> ({k.label}) — {sectionCountLabel(s).text}</div>; })}
         </>}
 
         {on.growing && <><H>What's growing now</H>
