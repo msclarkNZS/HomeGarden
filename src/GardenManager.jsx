@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bug
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bug, Bird
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -217,7 +217,7 @@ const SECTION_KINDS = {
   orchard:    { label:"Orchard",           icon:TreeDeciduous, color:"#5E7E4E", uses:"plants" },
   berry:      { label:"Berry patch",       icon:Cherry,        color:"#A23E55", uses:"plants" },
   paddock:    { label:"Paddock",           icon:Fence,         color:"#6E8B5A", uses:"stock", grazes:true },
-  coop:       { label:"Coop & run",        icon:Egg,           color:"#C28F2E", uses:"stock" },
+  coop:       { label:"Coop & run",        icon:Bird,           color:"#C28F2E", uses:"stock" },
   apiary:     { label:"Apiary (bees)",     icon:Bug,           color:"#B8902E", uses:"hives" },
 };
 // livestock species — which areas they live in, and the usual mob classes
@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 65";
+const APP_BUILD = "2026-06-25 · build 66";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1733,8 +1733,19 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
     setOpenAnimal(null); setSel({ kind: "mob", sectionId: section.id, id: newId }); };
 
   const daysHere = (m) => Math.max(0, Math.round((Date.now() - new Date(m.placed).getTime()) / 86400000));
+  const classBreakdown = (m) => { const counts = {}; (m.individuals || []).forEach((a) => { const c = a.klass || "—"; counts[c] = (counts[c] || 0) + 1; });
+    const order = SPECIES[m.species]?.classes || []; const keys = Object.keys(counts).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
+    return keys.map((c) => `${counts[c]} ${c}`).join(" · ") || "no animals"; };
   const selMob = sel?.kind === "mob" && sel.sectionId === section.id ? mobs.find((m) => m.id === sel.id) : null;
   const totalHead = mobs.reduce((n, m) => n + mobHead(m), 0);
+  const sp = selMob ? SPECIES[selMob.species] : null;
+  const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t)) : [];
+  const allowedIndiv = allowed.filter((t) => t !== "eggs");
+  const allowedMob = [...allowed.filter((t) => ["health", "drench", "shear"].includes(t)), ...allowed.filter((t) => t === "eggs")];
+  const logType = allowedMob.includes(log.type) ? log.type : allowedMob[0];
+  const openA = selMob && openAnimal ? (selMob.individuals || []).find((x) => x.id === openAnimal) : null;
+  const aType = allowedIndiv.includes(aLog.type) ? aLog.type : allowedIndiv[0];
+  const moveTargets = selMob ? data.sections.filter((s) => s.id !== section.id && SECTION_KINDS[s.kind].uses === "stock" && (sp?.areas || []).includes(s.kind)) : [];
 
   return (
     <div>
@@ -1747,7 +1758,8 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 320px", minWidth: 280 }}>
+        {/* LEFT — mobs, expanding inline */}
+        <div style={{ flex: "1 1 340px", minWidth: 300 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <strong style={{ fontSize: 14, color: C.fernDk }}>Animals here</strong>
             {!adding && <button onClick={() => setAdding(true)} style={btn(k.color)}><Plus size={14} /> Add mob</button>}
@@ -1766,196 +1778,190 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                     style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: on ? C.fern : "#fff", color: on ? "#fff" : C.ink, border: `1px solid ${on ? C.fern : C.line}` }}>{c.emoji} {c.label}</button>); })}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 120px" }}><label style={lblS}>Class</label>
+                <div style={{ flex: "1 1 120px" }}><label style={lblS}>Start as</label>
                   <select value={f.klass} onChange={(e) => setF((s) => ({ ...s, klass: e.target.value }))} style={inpS}>
                     {(SPECIES[f.species]?.classes || []).map((c) => <option key={c} value={c}>{c}</option>)}
                   </select></div>
                 <div style={{ width: 90 }}><label style={lblS}>How many?</label>
                   <input type="number" min="0" value={f.count} onChange={(e) => setF((s) => ({ ...s, count: e.target.value }))} style={inpS} placeholder="e.g. 12" /></div>
               </div>
-              <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Animals are named automatically (e.g. {(f.klass || "Sheep")} 1, {(f.klass || "Sheep")} 2) — rename any later.</p>
+              <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Named automatically (e.g. {(f.klass || "Hen")} 1, {(f.klass || "Hen")} 2) — change each animal's class as they grow.</p>
               <label style={lblS}>Breed (optional)</label>
               <input list={`breeds-${f.species}`} value={f.breed} onChange={(e) => setF((s) => ({ ...s, breed: e.target.value }))} style={inpS} placeholder="e.g. Romney, Brown Shaver" />
               <datalist id={`breeds-${f.species}`}>{(STOCK_BREEDS[f.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
-              <label style={lblS}>Name / tag (optional)</label>
-              <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} style={inpS} placeholder="e.g. The Romneys, Daisy" />
+              <label style={lblS}>Mob name / tag (optional)</label>
+              <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} style={inpS} placeholder="e.g. The Romneys, Back paddock flock" />
               <button onClick={addMob} style={{ ...btn(C.fern), marginTop: 10, width: "100%", justifyContent: "center" }}><Check size={15} /> Add to {section.name}</button>
             </div>)}
 
-          {mobs.length === 0 && !adding && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>No animals here yet. Add a mob — a group of the same kind of stock, like “12 ewes” or “8 layer hens”.</p>}
+          {mobs.length === 0 && !adding && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>No animals here yet. Add a mob — a group of stock, like the chooks or the ewes.</p>}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {mobs.map((m) => { const sp = SPECIES[m.species]; const on = selMob?.id === m.id;
-              return (<button key={m.id} onClick={() => { setOpenAnimal(null); setSel(on ? null : { kind: "mob", sectionId: section.id, id: m.id }); }}
-                style={{ textAlign: "left", cursor: "pointer", background: on ? hexA(C.fern, .12) : C.panel, border: `1px solid ${on ? hexA(C.fern, .5) : C.line}`, borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 22 }}>{sp?.emoji || "🐾"}</span>
-                <span style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, color: C.ink, fontWeight: 600 }}>{mobHead(m)} {m.klass}{m.name ? ` · ${m.name}` : ""}</div>
-                  <div style={{ fontSize: 11.5, color: C.muted }}>{sp?.label} · here {daysHere(m)} day{daysHere(m) === 1 ? "" : "s"}</div>
-                </span>
-              </button>); })}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {mobs.map((m) => { const spm = SPECIES[m.species]; const on = selMob?.id === m.id;
+              return (
+              <div key={m.id} style={{ border: `1px solid ${on ? hexA(C.fern, .5) : C.line}`, borderRadius: 10, background: on ? hexA(C.fern, .08) : C.panel, overflow: "hidden" }}>
+                <button onClick={() => { setOpenAnimal(null); setSel(on ? null : { kind: "mob", sectionId: section.id, id: m.id }); }}
+                  style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 22 }}>{spm?.emoji || "🐾"}</span>
+                  <span style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, color: C.ink, fontWeight: 600 }}>{m.name || spm?.label || "Mob"} · {mobHead(m)}</div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>{classBreakdown(m)}{m.breed ? ` · ${m.breed}` : ""}</div>
+                  </span>
+                  <span style={{ color: C.muted, fontSize: 13 }}>{on ? "▾" : "▸"}</span>
+                </button>
+
+                {on && (
+                  <div style={{ padding: "0 11px 12px" }}>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8 }}>{spm?.label} · here {daysHere(m)} day{daysHere(m) === 1 ? "" : "s"} (since {fmtDate(m.placed)})</div>
+
+                    <label style={lblS}>Mob name / tag</label>
+                    <input value={m.name || ""} onChange={(e) => patchMob(m.id, { name: e.target.value })} style={inpS} placeholder="optional" />
+                    <label style={lblS}>Breed (default for new animals)</label>
+                    <input list={`breeds-m-${m.species}`} value={m.breed || ""} onChange={(e) => patchMob(m.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
+                    <datalist id={`breeds-m-${m.species}`}>{(STOCK_BREEDS[m.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>ANIMALS ({(m.individuals || []).length})</span>
+                      <button onClick={() => addIndividual(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> Add one</button>
+                    </div>
+                    {(m.individuals || []).length === 0 && <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 6px" }}>No animals yet — add some below.</p>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {(m.individuals || []).map((a) => { const sel2 = openAnimal === a.id; return (
+                        <button key={a.id} onClick={() => setOpenAnimal(sel2 ? null : a.id)} style={{ textAlign: "left", cursor: "pointer", background: sel2 ? hexA(C.harvest, .12) : C.panel2, border: `1px solid ${sel2 ? hexA(C.harvest, .6) : C.line}`, borderRadius: 8, padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, color: C.ink }}>{a.name}</span>
+                          <span style={{ fontSize: 11, color: C.muted }}>{a.klass}</span>
+                          {(a.states || []).map((st) => <span key={st} style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .16), color: C.harvest, border: "none" }}>{st}</span>)}
+                          <span style={{ flex: 1 }} />
+                          {(a.ferts || []).length > 0 && <span style={{ fontSize: 11, color: C.muted }}>{a.ferts.length} log{a.ferts.length === 1 ? "" : "s"}</span>}
+                          <span style={{ color: sel2 ? C.harvest : C.muted, fontSize: 11 }}>{sel2 ? "open →" : "›"}</span>
+                        </button>); })}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontSize: 11.5, color: C.muted }}>Add several:</span>
+                      <input type="number" min="1" value={bulkN} onChange={(e) => setBulkN(e.target.value)} style={{ ...inpS, width: 56 }} />
+                      <button onClick={() => addIndividuals(m.id, bulkN)} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: C.fern, color: "#fff", border: "none" }}>+ add</button>
+                    </div>
+
+                    {allowedMob.length > 0 && <>
+                    <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 600, color: C.muted }}>WHOLE-MOB</div>
+                    <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 6px", lineHeight: 1.5 }}>Treatments apply to every animal in the mob now (each gets it in their own record). Eggs are logged for the whole mob.</p>
+                    {(() => { const rows = [];
+                      (m.ferts || []).forEach((fE) => rows.push({ ...fE, kind: "mob" }));
+                      const batches = {}; (m.individuals || []).forEach((a) => (a.ferts || []).forEach((fE) => { if (fE.batch) { if (!batches[fE.batch]) batches[fE.batch] = { ...fE, kind: "batch", n: 0 }; batches[fE.batch].n++; } }));
+                      Object.values(batches).forEach((b) => rows.push(b)); rows.sort((x, y) => (y.date || "").localeCompare(x.date || ""));
+                      return rows.length ? rows.slice(0, 20).map((fE) => (
+                        <div key={fE.kind === "batch" ? fE.batch : fE.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
+                          <span style={{ fontSize: 11.5, color: C.muted, minWidth: 78 }}>{fmtDate(fE.date)}</span>
+                          <span style={{ flex: 1, fontSize: 13 }}>{STOCK_LOG[fE.type]?.icon} {STOCK_LOG[fE.type]?.label}{fE.what ? ` · ${fE.what}` : ""}{fE.qty != null ? ` — ${fE.qty}${fE.unit ? " " + fE.unit : ""}` : ""}{fE.kind === "batch" ? ` — applied to ${fE.n}` : ""}</span>
+                          <button onClick={() => fE.kind === "batch" ? removeBatch(m.id, fE.batch) : removeEntry(m.id, null, fE.id)} style={iconBtn}><Trash2 size={13} /></button>
+                        </div>)) : <p style={{ fontSize: 12.5, color: C.muted, margin: "4px 0" }}>Nothing logged yet — bulk treatments and egg takings.</p>;
+                    })()}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                      {allowedMob.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const onk = logType === kk; return (
+                        <button key={kk} onClick={() => setLog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "4px 8px", fontSize: 11.5, background: onk ? C.fern : "#fff", color: onk ? "#fff" : C.muted, border: `1px solid ${onk ? C.fern : C.line}` }}>{v.icon} {v.product ? v.label : v.label + " all"}</button>); })}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <input type="date" value={log.date} onChange={(e) => setLog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
+                      {STOCK_LOG[logType]?.product
+                        ? <input type="number" min="0" step="any" value={log.qty} onChange={(e) => setLog((s) => ({ ...s, qty: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(m.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={STOCK_LOG[logType]?.unit || "#"} style={{ flex: "1 1 80px", ...inpS }} />
+                        : <input value={log.what} onChange={(e) => setLog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && (m.individuals || []).length && applyMobTreatment(m.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={logType === "drench" ? "product (optional)" : "details (optional)"} style={{ flex: "1 1 80px", ...inpS }} />}
+                      <button onClick={() => STOCK_LOG[logType]?.product ? pushEntry(m.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date) : (m.individuals || []).length && applyMobTreatment(m.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} style={btn(C.fern)}><Plus size={14} /></button>
+                    </div>
+                    {!STOCK_LOG[logType]?.product && (m.individuals || []).length === 0 && <p style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>Add animals first — treatments apply to the mob's animals.</p>}
+                    </>}
+
+                    <label style={lblS}>Move whole mob to</label>
+                    {moveTargets.length ? (
+                      <select value="" onChange={(e) => e.target.value && moveMob(m, e.target.value)} style={inpS}>
+                        <option value="">— choose an area —</option>
+                        {moveTargets.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    ) : <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>No other {section.kind === "coop" ? "coops" : "paddocks"} yet.</p>}
+
+                    <label style={lblS}>Mob notes</label>
+                    <textarea value={m.notes || ""} onChange={(e) => patchMob(m.id, { notes: e.target.value })}
+                      style={{ width: "100%", minHeight: 40, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
+
+                    <div style={{ marginTop: 10 }}>
+                      <ConfirmButton onConfirm={() => removeMob(m.id)} style={{ ...btnOutline(C.beet), width: "100%", justifyContent: "center" }} armedLabel="Remove this mob?"><Trash2 size={14} /> Remove mob</ConfirmButton>
+                    </div>
+                  </div>)}
+              </div>); })}
           </div>
 
-          <label style={{ fontSize: 12, color: C.muted, display: "block", margin: "14px 0 4px" }}>{section.kind === "coop" ? "Coop notes — feed, water, cleaning…" : "Paddock notes — pasture, water, shelter, hazards…"}</label>
+          <label style={{ fontSize: 12, color: C.muted, display: "block", margin: "16px 0 4px" }}>{section.kind === "coop" ? "Coop / run notes — feed, water, cleaning…" : "Paddock notes — pasture, water, shelter, hazards…"}</label>
           <textarea value={section.notes || ""} onChange={(e) => patchSection({ notes: e.target.value })}
-            style={{ width: "100%", minHeight: 70, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
+            style={{ width: "100%", minHeight: 60, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
         </div>
 
-        {selMob && (() => { const sp = SPECIES[selMob.species]; const moveTargets = data.sections.filter((s) => s.id !== section.id && SECTION_KINDS[s.kind].uses === "stock" && (sp?.areas || []).includes(s.kind));
-          const allowed = ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t));
-          const allowedIndiv = allowed.filter((t) => t !== "eggs");
-          const allowedMob = [...allowed.filter((t) => ["health", "drench", "shear"].includes(t)), ...allowed.filter((t) => t === "eggs")];
-          const logType = allowedMob.includes(log.type) ? log.type : allowedMob[0];
-          return (
-          <div style={{ flex: "1 1 280px", minWidth: 260, ...card }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 22 }}>{sp?.emoji || "🐾"}</span>
-              <strong style={{ fontFamily: display, fontSize: 17, flex: 1 }}>{selMob.name || sp?.label || "Mob"}</strong>
-              <button onClick={() => setSel(null)} style={iconBtn}><X size={16} /></button>
+        {/* RIGHT — selected individual animal */}
+        <div style={{ flex: "1 1 300px", minWidth: 280 }}>
+          {openA ? (
+            <div style={{ ...card }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                <input value={openA.name} onChange={(e) => patchIndividual(selMob.id, openA.id, { name: e.target.value })} style={{ ...inpS, fontFamily: display, fontSize: 16, fontWeight: 600, flex: 1 }} />
+                <button onClick={() => setOpenAnimal(null)} style={iconBtn}><X size={16} /></button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Class</label>
+                  <select value={openA.klass || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { klass: e.target.value })} style={inpS}>
+                    {(sp?.classes || [openA.klass]).map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select></div>
+                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Born</label>
+                  <input type="date" value={openA.born || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { born: e.target.value })} style={inpS} /></div>
+              </div>
+              <label style={lblS}>Breed</label>
+              <input list={`breeds-ind-${selMob.species}`} value={openA.breed || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
+              <datalist id={`breeds-ind-${selMob.species}`}>{(STOCK_BREEDS[selMob.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
+              <label style={lblS}>Notes</label>
+              <input value={openA.notes || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
+
+              <label style={lblS}>State</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {[...new Set([...(STOCK_STATES[selMob.species] || []), ...(openA.states || [])])].map((st) => { const onst = (openA.states || []).includes(st); return (
+                  <button key={st} onClick={() => toggleState(selMob.id, openA.id, st)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", fontSize: 11, background: onst ? C.harvest : "#fff", color: onst ? "#fff" : C.muted, border: `1px solid ${onst ? C.harvest : C.line}` }}>{st}</button>); })}
+                <input placeholder="+ add" onKeyDown={(e) => { if (e.key === "Enter" && e.target.value.trim()) { toggleState(selMob.id, openA.id, e.target.value.trim()); e.target.value = ""; } }} style={{ ...inpS, width: 90, padding: "3px 8px", fontSize: 11.5 }} />
+              </div>
+
+              {(() => { const moveMobs = data.sections.flatMap((s) => (s.mobs || []).filter((mm) => mm.species === selMob.species && mm.id !== selMob.id).map((mm) => ({ mm, area: s.name })));
+                return (<>
+                  <label style={lblS}>Move to mob</label>
+                  <select value="" onChange={(e) => { const v = e.target.value; if (v === "__new__") splitToNewMob(selMob.id, openA.id); else if (v) moveIndividual(selMob.id, openA.id, v); }} style={inpS}>
+                    <option value="">— choose —</option>
+                    <option value="__new__">➕ New mob (split out, here)</option>
+                    {moveMobs.map(({ mm, area }) => <option key={mm.id} value={mm.id}>{mm.name || SPECIES[mm.species]?.label} · {area}</option>)}
+                  </select>
+                </>); })()}
+
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: "12px 0 5px" }}>{openA.name}'s journal</div>
+              {(openA.ferts || []).length === 0 && <p style={{ fontSize: 12, color: C.muted, margin: "2px 0" }}>Nothing logged yet.</p>}
+              {[...(openA.ferts || [])].reverse().map((fE) => (
+                <div key={fE.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.line}` }}>
+                  <span style={{ fontSize: 11, color: C.muted, minWidth: 74 }}>{fmtDate(fE.date)}</span>
+                  <span style={{ flex: 1, fontSize: 12.5 }}>{STOCK_LOG[fE.type]?.icon} {STOCK_LOG[fE.type]?.product ? STOCK_LOG[fE.type].label : fE.what}{fE.qty != null ? ` — ${fE.qty}${fE.unit ? " " + fE.unit : ""}` : ""}{fE.batch ? " · mob" : ""}</span>
+                  {!fE.batch && <button onClick={() => removeEntry(selMob.id, openA.id, fE.id)} style={iconBtn}><Trash2 size={12} /></button>}
+                </div>))}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>
+                {allowedIndiv.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const onk = aType === kk; return (
+                  <button key={kk} onClick={() => setALog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "3px 8px", fontSize: 11, background: onk ? C.fern : C.panel2, color: onk ? "#fff" : C.muted, border: `1px solid ${onk ? C.fern : C.line}` }}>{v.icon} {v.label}</button>); })}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="date" value={aLog.date} onChange={(e) => setALog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
+                {!STOCK_LOG[aType]?.product && <input value={aLog.what} onChange={(e) => setALog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, openA.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} placeholder={aType === "weight" ? "condition / note" : aType === "drench" ? "product" : "details"} style={{ flex: "1 1 80px", ...inpS }} />}
+                {(STOCK_LOG[aType]?.unit || STOCK_LOG[aType]?.count) && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? "1 1 80px" : "0 0 56px", ...inpS }} />}
+                <button onClick={() => pushEntry(selMob.id, openA.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} style={btn(C.fern)}><Plus size={14} /></button>
+              </div>
+
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "sold")} style={{ ...btnOutline(C.soil), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as sold?"><span style={{ fontSize: 13 }}>🏷️</span> Sold</ConfirmButton>
+                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "died")} style={{ ...btnOutline(C.beet), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as died?"><X size={13} /> Died</ConfirmButton>
+              </div>
+              <p style={{ fontSize: 11, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>Archiving keeps {openA.name}'s history in the report and drops them from the count. <ConfirmButton onConfirm={() => removeIndividual(selMob.id, openA.id)} style={{ ...linkBtn, color: C.beet }} armedLabel="Delete permanently?">delete permanently</ConfirmButton> (mistakes only).</p>
             </div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{sp?.label} · in {section.name} for {daysHere(selMob)} day{daysHere(selMob) === 1 ? "" : "s"} (since {fmtDate(selMob.placed)})</div>
-
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <div style={{ width: 110 }}><label style={lblS}>Head count</label>
-                <div style={{ ...inpS, background: C.panel, color: C.muted }}>{mobHead(selMob)} animal{mobHead(selMob) === 1 ? "" : "s"}</div></div>
-              <div style={{ flex: "1 1 120px" }}><label style={lblS}>Class (new animals)</label>
-                <select value={selMob.klass} onChange={(e) => patchMob(selMob.id, { klass: e.target.value })} style={inpS}>
-                  {(sp?.classes || [selMob.klass]).map((c) => <option key={c} value={c}>{c}</option>)}
-                </select></div>
-            </div>
-            <label style={lblS}>Name / tag</label>
-            <input value={selMob.name || ""} onChange={(e) => patchMob(selMob.id, { name: e.target.value })} style={inpS} placeholder="optional" />
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>ANIMALS ({(selMob.individuals || []).length})</span>
-              <button onClick={() => addIndividual(selMob.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> Add one</button>
-            </div>
-            {(selMob.individuals || []).length === 0 && <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 6px", lineHeight: 1.5 }}>No animals yet — add some below.</p>}
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {(selMob.individuals || []).map((a) => { const on = openAnimal === a.id; return (
-                <button key={a.id} onClick={() => setOpenAnimal(on ? null : a.id)} style={{ textAlign: "left", cursor: "pointer", background: on ? hexA(C.fern, .12) : C.panel2, border: `1px solid ${on ? hexA(C.fern, .5) : C.line}`, borderRadius: 8, padding: "7px 10px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ flex: 1, fontSize: 13, color: C.ink }}>{a.name}{a.klass && a.klass !== selMob.klass ? ` · ${a.klass}` : ""}</span>
-                  {(a.states || []).map((st) => <span key={st} style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .16), color: C.harvest, border: "none" }}>{st}</span>)}
-                  {(a.ferts || []).length > 0 && <span style={{ fontSize: 11, color: C.muted }}>{a.ferts.length} log{a.ferts.length === 1 ? "" : "s"}</span>}
-                  <span style={{ color: C.muted, fontSize: 12 }}>{on ? "▾" : "▸"}</span>
-                </button>); })}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 11.5, color: C.muted }}>Add several:</span>
-              <input type="number" min="1" value={bulkN} onChange={(e) => setBulkN(e.target.value)} style={{ ...inpS, width: 56 }} />
-              <button onClick={() => addIndividuals(selMob.id, bulkN)} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: C.fern, color: "#fff", border: "none" }}>+ add</button>
-            </div>
-
-            {openAnimal && (() => { const a = (selMob.individuals || []).find((x) => x.id === openAnimal); if (!a) return null;
-              const aAllowed = allowedIndiv; const aType = aAllowed.includes(aLog.type) ? aLog.type : aAllowed[0];
-              return (
-              <div style={{ marginTop: 8, border: `1px solid ${hexA(C.fern, .5)}`, borderRadius: 10, padding: 11, background: "#fff" }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                  <input value={a.name} onChange={(e) => patchIndividual(selMob.id, a.id, { name: e.target.value })} style={{ ...inpS, fontWeight: 600, flex: 1 }} />
-                  <button onClick={() => setOpenAnimal(null)} style={iconBtn}><X size={15} /></button>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <div style={{ flex: "1 1 110px" }}><label style={lblS}>Class</label>
-                    <select value={a.klass || selMob.klass} onChange={(e) => patchIndividual(selMob.id, a.id, { klass: e.target.value })} style={inpS}>
-                      {(sp?.classes || [a.klass]).map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select></div>
-                  <div style={{ flex: "1 1 110px" }}><label style={lblS}>Born</label>
-                    <input type="date" value={a.born || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { born: e.target.value })} style={inpS} /></div>
-                </div>
-                <label style={lblS}>Breed</label>
-                <input list={`breeds-ind-${selMob.species}`} value={a.breed || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
-                <datalist id={`breeds-ind-${selMob.species}`}>{(STOCK_BREEDS[selMob.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
-                <label style={lblS}>Notes</label>
-                <input value={a.notes || ""} onChange={(e) => patchIndividual(selMob.id, a.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
-
-                <label style={lblS}>State</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {[...new Set([...(STOCK_STATES[selMob.species] || []), ...(a.states || [])])].map((st) => { const on = (a.states || []).includes(st); return (
-                    <button key={st} onClick={() => toggleState(selMob.id, a.id, st)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", fontSize: 11, background: on ? C.harvest : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.harvest : C.line}` }}>{st}</button>); })}
-                  <input placeholder="+ add state" onKeyDown={(e) => { if (e.key === "Enter" && e.target.value.trim()) { toggleState(selMob.id, a.id, e.target.value.trim()); e.target.value = ""; } }} style={{ ...inpS, width: 110, padding: "3px 8px", fontSize: 11.5 }} />
-                </div>
-
-                {(() => { const moveMobs = data.sections.flatMap((s) => (s.mobs || []).filter((m) => m.species === selMob.species && m.id !== selMob.id).map((m) => ({ m, area: s.name })));
-                  return (<>
-                    <label style={lblS}>Move to mob</label>
-                    <select value="" onChange={(e) => { const v = e.target.value; if (v === "__new__") splitToNewMob(selMob.id, a.id); else if (v) moveIndividual(selMob.id, a.id, v); }} style={inpS}>
-                      <option value="">— choose —</option>
-                      <option value="__new__">➕ New mob (split out, in {section.name})</option>
-                      {moveMobs.map(({ m, area }) => <option key={m.id} value={m.id}>{m.name || SPECIES[m.species]?.label} · {m.klass} ({area})</option>)}
-                    </select>
-                  </>); })()}
-
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: "10px 0 5px" }}>{a.name}'s journal</div>
-                {(a.ferts || []).length === 0 && <p style={{ fontSize: 12, color: C.muted, margin: "2px 0" }}>Nothing logged yet.</p>}
-                {[...(a.ferts || [])].reverse().map((fE) => (
-                  <div key={fE.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.line}` }}>
-                    <span style={{ fontSize: 11, color: C.muted, minWidth: 74 }}>{fmtDate(fE.date)}</span>
-                    <span style={{ flex: 1, fontSize: 12.5 }}>{STOCK_LOG[fE.type]?.icon} {STOCK_LOG[fE.type]?.product ? STOCK_LOG[fE.type].label + (fE.what ? ` · ${fE.what}` : "") : fE.what}{fE.qty != null ? ` — ${fE.qty}${fE.unit ? " " + fE.unit : ""}` : ""}</span>
-                    <button onClick={() => removeEntry(selMob.id, a.id, fE.id)} style={iconBtn}><Trash2 size={12} /></button>
-                  </div>))}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>
-                  {aAllowed.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const on = aType === kk; return (
-                    <button key={kk} onClick={() => setALog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "3px 8px", fontSize: 11, background: on ? C.fern : C.panel2, color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{v.icon} {v.label}</button>); })}
-                </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <input type="date" value={aLog.date} onChange={(e) => setALog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
-                  {!STOCK_LOG[aType]?.product && <input value={aLog.what} onChange={(e) => setALog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)}
-                    placeholder={aType === "weight" ? "e.g. condition / note" : aType === "drench" ? "product used" : "details"} style={{ flex: "1 1 90px", ...inpS }} />}
-                  {(STOCK_LOG[aType]?.unit || STOCK_LOG[aType]?.count) && <input type="number" min="0" step="any" value={aLog.qty} onChange={(e) => setALog((s) => ({ ...s, qty: e.target.value }))} placeholder={STOCK_LOG[aType]?.unit || "#"} style={{ flex: STOCK_LOG[aType]?.product ? "1 1 90px" : "0 0 60px", ...inpS }} />}
-                  <button onClick={() => pushEntry(selMob.id, a.id, aType, aLog.what, aLog.qty, () => setALog((s) => ({ ...s, what: "", qty: "" })), aLog.date)} style={btn(C.fern)}><Plus size={14} /></button>
-                </div>
-                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, a.id, "sold")} style={{ ...btnOutline(C.soil), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as sold?"><span style={{ fontSize: 13 }}>🏷️</span> Sold</ConfirmButton>
-                  <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, a.id, "died")} style={{ ...btnOutline(C.beet), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as died?"><X size={13} /> Died</ConfirmButton>
-                </div>
-                <p style={{ fontSize: 11, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>Archiving keeps {a.name}'s full history in the Livestock report and drops them from the live count. <ConfirmButton onConfirm={() => removeIndividual(selMob.id, a.id)} style={{ ...linkBtn, color: C.beet }} armedLabel="Delete permanently?">delete permanently</ConfirmButton> (mistakes only).</p>
-              </div>); })()}
-
-            <label style={lblS}>Move to</label>
-            {moveTargets.length ? (
-              <select value="" onChange={(e) => e.target.value && moveMob(selMob, e.target.value)} style={inpS}>
-                <option value="">— choose an area —</option>
-                {moveTargets.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            ) : <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>No other {section.kind === "coop" ? "coops" : "paddocks"} to move to yet — add another on the property map.</p>}
-
-            <label style={lblS}>Notes</label>
-            <textarea value={selMob.notes || ""} onChange={(e) => patchMob(selMob.id, { notes: e.target.value })}
-              style={{ width: "100%", minHeight: 44, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
-
-            {allowedMob.length > 0 && <>
-            <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: C.muted }}>WHOLE-MOB</div>
-            <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 6px", lineHeight: 1.5 }}>Treatments here apply to every animal in the mob right now (each gets it in their own record). Eggs are logged for the whole mob.</p>
-            {(() => { const rows = [];
-              (selMob.ferts || []).forEach((f) => rows.push({ ...f, kind: "mob" }));
-              const batches = {}; (selMob.individuals || []).forEach((a) => (a.ferts || []).forEach((f) => { if (f.batch) { if (!batches[f.batch]) batches[f.batch] = { ...f, kind: "batch", n: 0 }; batches[f.batch].n++; } }));
-              Object.values(batches).forEach((b) => rows.push(b));
-              rows.sort((x, y) => (y.date || "").localeCompare(x.date || ""));
-              return rows.length ? rows.slice(0, 30).map((f, i) => (
-                <div key={f.kind === "batch" ? f.batch : f.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
-                  <span style={{ fontSize: 11.5, color: C.muted, minWidth: 78 }}>{fmtDate(f.date)}</span>
-                  <span style={{ flex: 1, fontSize: 13 }}>{STOCK_LOG[f.type]?.icon} {STOCK_LOG[f.type]?.label}{f.what ? ` · ${f.what}` : ""}{f.qty != null ? ` — ${f.qty}${f.unit ? " " + f.unit : ""}` : ""}{f.kind === "batch" ? ` — applied to ${f.n}` : ""}</span>
-                  <button onClick={() => f.kind === "batch" ? removeBatch(selMob.id, f.batch) : removeEntry(selMob.id, null, f.id)} style={iconBtn}><Trash2 size={13} /></button>
-                </div>)) : <p style={{ fontSize: 12.5, color: C.muted, margin: "4px 0" }}>Nothing logged yet — bulk drench/treatments and egg takings.</p>;
-            })()}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-              {allowedMob.map((kk) => { const v = STOCK_LOG[kk]; if (!v) return null; const on = logType === kk; return (
-                <button key={kk} onClick={() => setLog((s) => ({ ...s, type: kk }))} style={{ ...chip, cursor: "pointer", padding: "4px 8px", fontSize: 11.5, background: on ? C.fern : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{v.icon} {STOCK_LOG[kk]?.product ? v.label : v.label + " all"}</button>); })}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <input type="date" value={log.date} onChange={(e) => setLog((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, width: "auto", flex: "0 0 auto", fontSize: 12 }} />
-              {STOCK_LOG[logType]?.product
-                ? <input type="number" min="0" step="any" value={log.qty} onChange={(e) => setLog((s) => ({ ...s, qty: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={STOCK_LOG[logType]?.unit || "#"} style={{ flex: "1 1 90px", ...inpS }} />
-                : <input value={log.what} onChange={(e) => setLog((s) => ({ ...s, what: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} placeholder={logType === "drench" ? "product used (optional)" : "details (optional)"} style={{ flex: "1 1 90px", ...inpS }} />}
-              <button onClick={() => STOCK_LOG[logType]?.product ? pushEntry(selMob.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date) : (selMob.individuals || []).length && applyMobTreatment(selMob.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} style={btn(C.fern)}><Plus size={14} /></button>
-            </div>
-            {!STOCK_LOG[logType]?.product && (selMob.individuals || []).length === 0 && <p style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>Add animals first — treatments apply to the mob's animals.</p>}
-            </>}
-
-            <div style={{ marginTop: 12 }}>
-              <ConfirmButton onConfirm={() => removeMob(selMob.id)} style={{ ...btnOutline(C.beet), width: "100%", justifyContent: "center" }} armedLabel="Remove this mob?"><Trash2 size={14} /> Remove mob</ConfirmButton>
-            </div>
-          </div>); })()}
+          ) : (
+            <div style={{ ...card, color: C.muted, fontSize: 13, lineHeight: 1.5 }}>{selMob ? "Tap an animal in the list to see and edit its details, journal and state here." : "Tap a mob on the left to open it, then tap an animal to see its details here."}</div>
+          )}
+        </div>
       </div>
     </div>
   );
