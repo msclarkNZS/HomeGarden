@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 78";
+const APP_BUILD = "2026-06-25 · build 79";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -894,11 +894,11 @@ export default function GardenManager() {
   const vm = viewOverride || data.viewMode || "auto";
   const simple = vm === "simple" || (vm === "auto" && isPhone);
   const FULL_TABS = [
-    { id: "map", label: "Property", icon: Map },
-    ...(hasStock ? [{ id: "stock", label: "Stock", icon: Fence }] : []),
     { id: "harvest", label: "Gather & care", icon: Cherry },
-    { id: "weather", label: "Weather", icon: CloudSun },
     { id: "season", label: "Do now", icon: CalendarDays },
+    ...(hasStock ? [{ id: "stock", label: "Stock", icon: Fence }] : []),
+    { id: "weather", label: "Weather", icon: CloudSun },
+    { id: "map", label: "Property", icon: Map },
     { id: "rotation", label: "Rotation", icon: RefreshCw },
     { id: "plants", label: "Library", icon: Sprout },
     { id: "report", label: "Report", icon: FileText },
@@ -3344,11 +3344,25 @@ function PlantLogger({ data, setData, display }) {
   const [mode, setMode] = useState("harvest");
   const [h, setH] = useState({ qty: "", unit: "handful", note: "", date: todayISO() });
   const [care, setCare] = useState({ note: "", date: todayISO() });
+  const [showPick, setShowPick] = useState(false);
+  const [pick, setPick] = useState({ crop: "", sel: {}, qty: "", unit: "handful", note: "", date: todayISO() });
 
   const addToPlanting = (sectionId, bedId, pid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, beds: (s.beds || []).map((b) => b.id !== bedId ? b : { ...b, plantings: (b.plantings || []).map((p) => p.id !== pid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }) }));
   const addToMarker = (sectionId, mid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, plants: (s.plants || []).map((p) => p.id !== mid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }));
   const logHarvest = (write) => { if (h.qty === "" && !h.note.trim()) return; write({ id: uid(), date: h.date || todayISO(), type: "harvest", qty: h.qty === "" ? null : Number(h.qty), unit: h.unit, what: h.note.trim() || undefined }); setH({ qty: "", unit: h.unit, note: "", date: todayISO() }); };
   const logCare = (write) => { if (!care.note.trim()) return; write({ id: uid(), date: care.date || todayISO(), what: care.note.trim() }); setCare({ note: "", date: todayISO() }); };
+
+  const allCrops = [...new Set(areas.flatMap((s) => SECTION_KINDS[s.kind].uses === "beds"
+    ? (s.beds || []).flatMap((b) => bedPlantings(b).filter((p) => !plantingRemoved(p)).map((p) => p.plant))
+    : (s.plants || []).map((p) => p.plant)).filter(Boolean))].sort();
+  const pickCrop = pick.crop || allCrops[0] || "";
+  const pickTargets = (() => { const out = []; areas.forEach((s) => { if (SECTION_KINDS[s.kind].uses === "beds") (s.beds || []).forEach((b) => bedPlantings(b).filter((p) => !plantingRemoved(p) && p.plant === pickCrop).forEach((p) => out.push({ key: p.id, label: `${b.name} · ${s.name}${p.variety ? ` (${p.variety})` : ""}`, write: (e) => addToPlanting(s.id, b.id, p.id, e) })));
+    else (s.plants || []).filter((p) => p.plant === pickCrop).forEach((p, i) => out.push({ key: p.id, label: `${s.name}${(s.plants || []).filter((x) => x.plant === pickCrop).length > 1 ? ` #${i + 1}` : ""}`, write: (e) => addToMarker(s.id, p.id, e) })); }); return out; })();
+  const pickChosen = pickTargets.filter((t) => pick.sel[t.key] !== false);
+  const doPick = () => { if (!pickCrop) return; const total = pick.qty === "" ? null : Number(pick.qty); if (total == null && !pick.note.trim()) return;
+    if (!pickChosen.length) { setData((d) => ({ ...d, harvests: [...(d.harvests || []), { id: uid(), date: pick.date || todayISO(), plant: pickCrop, qty: total, unit: pick.unit, what: pick.note.trim() || undefined }] })); }
+    else { const share = total != null ? Math.round((total / pickChosen.length) * 100) / 100 : null; pickChosen.forEach((t) => t.write({ id: uid(), date: pick.date || todayISO(), type: "harvest", qty: share, unit: pick.unit, what: pick.note.trim() || undefined })); }
+    setPick((s) => ({ ...s, qty: "", note: "" })); setShowPick(false); };
 
   const leaf = (it) => { const sel = openItem === it.key; const picks = (it.obj.ferts || []).filter((f) => f.type === "harvest").length; const cares = (it.obj.ferts || []).filter((f) => f.type !== "harvest" && f.type !== "task").length; const last = (it.obj.ferts || []).slice(-1)[0];
     return (
@@ -3386,6 +3400,36 @@ function PlantLogger({ data, setData, display }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div>
+        {!showPick ? <button onClick={() => setShowPick(true)} style={{ ...btn(C.harvest), width: "100%", justifyContent: "center" }}><Cherry size={15} /> Log a harvest (pick the beds)</button>
+        : (
+          <div style={{ ...card, padding: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <strong style={{ fontSize: 13.5, color: C.fernDk }}><Cherry size={14} color={C.beet} style={{ verticalAlign: -2, marginRight: 4 }} />Log a harvest</strong>
+              <button onClick={() => setShowPick(false)} style={iconBtn}><X size={16} /></button>
+            </div>
+            {allCrops.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Nothing growing yet to harvest.</p> : <>
+              <label style={lblS}>Crop</label>
+              <select value={pickCrop} onChange={(e) => setPick((s) => ({ ...s, crop: e.target.value, sel: {} }))} style={inpS}>{allCrops.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+              <label style={lblS}>Which beds did it come from?</label>
+              {pickTargets.length === 0 ? <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>No live plantings of {pickCrop} — it'll log as a general pick.</p>
+                : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{pickTargets.map((t) => { const onSel = pick.sel[t.key] !== false; return (
+                  <button key={t.key} onClick={() => setPick((s) => ({ ...s, sel: { ...s.sel, [t.key]: !onSel } }))} style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "left", cursor: "pointer", background: onSel ? hexA(C.fern, .1) : C.panel2, border: `1px solid ${onSel ? hexA(C.fern, .5) : C.line}`, borderRadius: 8, padding: "6px 10px" }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${onSel ? C.fern : C.line}`, background: onSel ? C.fern : "#fff", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{onSel && <Check size={12} />}</span>
+                    <span style={{ fontSize: 13, color: C.ink }}>{t.label}</span>
+                  </button>); })}</div>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                <input type="number" min="0" step="any" value={pick.qty} onChange={(e) => setPick((s) => ({ ...s, qty: e.target.value }))} placeholder="total" style={{ ...inpS, flex: "1 1 70px" }} />
+                <select value={pick.unit} onChange={(e) => setPick((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{H_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                <input type="date" value={pick.date} onChange={(e) => setPick((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+              </div>
+              <input value={pick.note} onChange={(e) => setPick((s) => ({ ...s, note: e.target.value }))} placeholder="note (optional)" style={{ ...inpS, marginTop: 6 }} />
+              {pick.qty !== "" && pickChosen.length > 1 && <p style={{ fontSize: 11, color: C.muted, margin: "6px 0 0" }}>Splits as ~{Math.round((Number(pick.qty) / pickChosen.length) * 100) / 100} {pick.unit} across {pickChosen.length} beds.</p>}
+              <button onClick={doPick} style={{ ...btn(C.harvest), marginTop: 8, width: "100%", justifyContent: "center" }}><Plus size={14} /> Log harvest{pickChosen.length ? ` to ${pickChosen.length} bed${pickChosen.length === 1 ? "" : "s"}` : ""}</button>
+            </>}
+          </div>
+        )}
+      </div>
       {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = openArea === s.id; const usesBeds = SECTION_KINDS[s.kind].uses === "beds";
         const plantCount = usesBeds ? (s.beds || []).reduce((n, b) => n + bedPlantings(b).filter((p) => !plantingRemoved(p)).length, 0) : (s.plants || []).length;
         return (
