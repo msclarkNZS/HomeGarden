@@ -233,7 +233,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 48";
+const APP_BUILD = "2026-06-25 · build 49";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1031,7 +1031,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
                 : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
               <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />
               <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
-              <ConfirmButton onConfirm={() => delSection(s.id)} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
+              <ConfirmButton onConfirm={() => delSection(s.id)} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
             </div>); })}
         </div>)}
 
