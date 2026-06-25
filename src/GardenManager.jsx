@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 80";
+const APP_BUILD = "2026-06-25 · build 81";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -925,7 +925,7 @@ export default function GardenManager() {
   return (
     <LibCtx.Provider value={lib}>
     <div style={{ fontFamily: body, background: C.bg, color: C.ink, minHeight: 620, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.line}` }}>
-      <header style={{ background: C.fernDk, color: "#F1EEE2", padding: "16px 20px" }}>
+      <header style={{ background: C.fernDk, color: "#F1EEE2", padding: "calc(16px + env(safe-area-inset-top, 0px)) 20px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Leaf size={22} color={C.sageSoft} />
           <div style={{ flex: 1 }}>
@@ -942,15 +942,15 @@ export default function GardenManager() {
         </div>}
       </header>
 
-      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
+      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", ...(simple ? { flexWrap: "wrap" } : { overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }) }}>
         {TABS.map((t) => { const on = tab === t.id; const Icon = t.icon; return (
           <button key={t.id} onClick={() => { setTab(t.id); setSel(null); }}
-            style={{ display: "flex", alignItems: "center", gap: 6, border: "none", cursor: "pointer", padding: "11px 14px", fontSize: 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flexShrink: 0 }}>
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", cursor: "pointer", padding: "11px 14px", fontSize: 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flex: simple ? "1 1 auto" : "0 0 auto" }}>
             <Icon size={16} /> {t.label}
           </button>); })}
         {isPhone && <button onClick={() => setViewOverride(simple ? "full" : "simple")} title={simple ? "Switch to full view" : "Switch to simple view"}
-          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, border: "none", cursor: "pointer", padding: "11px 12px", fontSize: 12.5, fontWeight: 600, fontFamily: body, color: "#DfE6D8", background: "transparent", whiteSpace: "nowrap", flexShrink: 0 }}>
-          {simple ? <><Map size={15} /> Full</> : <><CalendarDays size={15} /> Simple</>}</button>}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, border: "none", cursor: "pointer", padding: "11px 12px", fontSize: 12.5, fontWeight: 600, fontFamily: body, color: "#DfE6D8", background: "transparent", whiteSpace: "nowrap", flex: simple ? "1 1 auto" : "0 0 auto", ...(simple ? {} : { marginLeft: "auto" }) }}>
+          {simple ? <><Map size={15} /> Full view</> : <><CalendarDays size={15} /> Simple</>}</button>}
       </nav>
 
       <main style={{ padding: "18px clamp(12px, 4vw, 18px)" }}>
@@ -1641,6 +1641,43 @@ function StockPage({ data, setData, display, focusId, onBack }) {
   );
 }
 
+const SEX_CLASS = {
+  chicken: { f: ["Hen", "Pullet"], m: ["Rooster", "Cockerel"] },
+  sheep:   { f: ["Ewe"], m: ["Ram", "Wether"] },
+  cattle:  { f: ["Cow", "Heifer"], m: ["Bull", "Steer"] },
+  goat:    { f: ["Doe"], m: ["Buck", "Wether"] },
+  pig:     { f: ["Sow", "Gilt"], m: ["Boar", "Barrow"] },
+};
+const PARENT_LABEL = {
+  chicken: { dam: "Mother (hen)", sire: "Father (rooster)" },
+  goat:    { dam: "Dam (doe)", sire: "Sire (buck)" },
+  pig:     { dam: "Dam (sow)", sire: "Sire (boar)" },
+  cattle:  { dam: "Dam (cow)", sire: "Sire (bull)" },
+  sheep:   { dam: "Dam (ewe)", sire: "Sire (ram)" },
+};
+const parentLabel = (species, role) => (PARENT_LABEL[species] || { dam: "Dam (mother)", sire: "Sire (father)" })[role];
+const canBeParent = (species, klass, sex) => { const m = SEX_CLASS[species]; if (!m) return true; return (m[sex] || []).includes(klass); };
+
+// iOS-friendly breed picker: a real <select> (datalists barely work on iPhone) plus a "type new" path
+function BreedSelect({ species, value, onChange, options, remember, placeholder = "— breed (optional) —" }) {
+  const known = options(species);
+  const inList = !value || known.includes(value);
+  const [typing, setTyping] = useState(!inList && !!value);
+  if (typing) {
+    return (
+      <span style={{ display: "flex", gap: 6 }}>
+        <input value={value || ""} autoFocus onChange={(e) => onChange(e.target.value)} onBlur={(e) => remember(species, e.target.value)} placeholder="type a breed" style={{ ...inpS, flex: 1 }} />
+        <button onClick={() => { remember(species, value); setTyping(false); }} style={{ ...chip, cursor: "pointer", padding: "0 12px", background: C.panel2, color: C.muted, border: `1px solid ${C.line}` }}>list</button>
+      </span>);
+  }
+  return (
+    <select value={value || ""} onChange={(e) => { const v = e.target.value; if (v === "__other__") { setTyping(true); onChange(""); } else onChange(v); }} style={inpS}>
+      <option value="">{placeholder}</option>
+      {known.map((b) => <option key={b} value={b}>{b}</option>)}
+      <option value="__other__">➕ Type a new breed…</option>
+    </select>);
+}
+
 function AreaStock({ data, setData, section, display }) {
   const k = SECTION_KINDS[section.kind];
   const KindIcon = k.icon;
@@ -1732,8 +1769,8 @@ function AreaStock({ data, setData, section, display }) {
   const kin = []; if (selMob) { data.sections.forEach((s) => (s.mobs || []).forEach((mm) => { if (mm.species === selMob.species) (mm.individuals || []).forEach((x) => kin.push({ id: x.id, name: x.name, klass: x.klass, breed: x.breed })); }));
     (data.archive || []).forEach((r) => { if (r.species === selMob.species) kin.push({ id: r.id, name: r.name, klass: r.klass, breed: r.breed, archived: true }); }); }
   const kinBreed = (p) => p && p.id ? kin.find((x) => x.id === p.id)?.breed : null;
-  const setParent = (role, name) => { if (!openA) return; const other = role === "dam" ? openA.sire : openA.dam;
-    const match = kin.find((x) => x.name === name && x.id !== openA.id); const parent = name ? { id: match?.id || null, name } : null;
+  const setParentById = (role, id) => { if (!openA) return; const other = role === "dam" ? openA.sire : openA.dam;
+    const match = id ? kin.find((x) => x.id === id) : null; const parent = id ? { id, name: match?.name || "" } : null;
     const patch = { [role]: parent };
     if (!openA.breed) { const b1 = match?.breed, b2 = kinBreed(other); const bs = [b1, b2].filter(Boolean); if (bs.length === 2) patch.breed = bs[0] === bs[1] ? bs[0] : `${bs[0]} × ${bs[1]}`; else if (bs.length === 1) patch.breed = bs[0]; }
     patchIndividual(selMob.id, openA.id, patch); };
@@ -1773,8 +1810,7 @@ function AreaStock({ data, setData, section, display }) {
               </div>
               <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Named automatically (e.g. {(f.klass || "Hen")} 1, {(f.klass || "Hen")} 2) — change each animal's class as they grow.</p>
               <label style={lblS}>Breed (optional)</label>
-              <input list={`breeds-${f.species}`} value={f.breed} onChange={(e) => setF((s) => ({ ...s, breed: e.target.value }))} onBlur={(e) => rememberBreed(f.species, e.target.value)} style={inpS} placeholder="e.g. Romney, Brown Shaver" />
-              <datalist id={`breeds-${f.species}`}>{breedOptions(f.species).map((b) => <option key={b} value={b} />)}</datalist>
+              <BreedSelect species={f.species} value={f.breed} onChange={(v) => setF((s) => ({ ...s, breed: v }))} options={breedOptions} remember={rememberBreed} />
               <label style={lblS}>Mob name / tag (optional)</label>
               <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} style={inpS} placeholder="e.g. The Romneys, Back paddock flock" />
               <button onClick={addMob} style={{ ...btn(C.fern), marginTop: 10, width: "100%", justifyContent: "center" }}><Check size={15} /> Add to {section.name}</button>
@@ -1803,8 +1839,7 @@ function AreaStock({ data, setData, section, display }) {
                     <label style={lblS}>Mob name / tag</label>
                     <input value={m.name || ""} onChange={(e) => patchMob(m.id, { name: e.target.value })} style={inpS} placeholder="optional" />
                     <label style={lblS}>Breed (default for new animals)</label>
-                    <input list={`breeds-m-${m.species}`} value={m.breed || ""} onChange={(e) => patchMob(m.id, { breed: e.target.value })} onBlur={(e) => rememberBreed(m.species, e.target.value)} style={inpS} placeholder="optional" />
-                    <datalist id={`breeds-m-${m.species}`}>{breedOptions(m.species).map((b) => <option key={b} value={b} />)}</datalist>
+                    <BreedSelect species={m.species} value={m.breed || ""} onChange={(v) => patchMob(m.id, { breed: v })} options={breedOptions} remember={rememberBreed} />
 
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>ANIMALS ({(m.individuals || []).length})</span>
@@ -1900,16 +1935,24 @@ function AreaStock({ data, setData, section, display }) {
                   <input type="date" value={openA.born || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { born: e.target.value })} style={inpS} /></div>
               </div>
               <label style={lblS}>Breed</label>
-              <input list={`breeds-ind-${selMob.species}`} value={openA.breed || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { breed: e.target.value })} onBlur={(e) => rememberBreed(selMob.species, e.target.value)} style={inpS} placeholder="optional" />
-              <datalist id={`breeds-ind-${selMob.species}`}>{breedOptions(selMob.species).map((b) => <option key={b} value={b} />)}</datalist>
+              <BreedSelect species={selMob.species} value={openA.breed || ""} onChange={(v) => patchIndividual(selMob.id, openA.id, { breed: v })} options={breedOptions} remember={rememberBreed} />
 
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Dam (mother)</label>
-                  <input list="kin-list" value={openA.dam?.name || ""} onChange={(e) => setParent("dam", e.target.value)} style={inpS} placeholder="optional" /></div>
-                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Sire (father)</label>
-                  <input list="kin-list" value={openA.sire?.name || ""} onChange={(e) => setParent("sire", e.target.value)} style={inpS} placeholder="optional" /></div>
-              </div>
-              <datalist id="kin-list">{(() => { const seen = {}; const list = []; kin.forEach((x) => { if (x.id !== openA.id && !seen[x.name]) { seen[x.name] = 1; list.push(x); } }); return list.map((x) => <option key={x.id} value={x.name}>{x.klass}{x.archived ? " · past" : ""}</option>); })()}</datalist>
+              {(() => { const ensure = (opts, p) => p && p.id && !opts.some((o) => o.id === p.id) ? [{ id: p.id, name: p.name, archived: true }, ...opts] : opts;
+                const damOpts = ensure(kin.filter((x) => x.id !== openA.id && canBeParent(selMob.species, x.klass, "f")), openA.dam);
+                const sireOpts = ensure(kin.filter((x) => x.id !== openA.id && canBeParent(selMob.species, x.klass, "m")), openA.sire);
+                return (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 120px" }}><label style={lblS}>{parentLabel(selMob.species, "dam")}</label>
+                    <select value={openA.dam?.id || ""} onChange={(e) => setParentById("dam", e.target.value)} style={inpS}>
+                      <option value="">— none —</option>
+                      {damOpts.map((x) => <option key={x.id} value={x.id}>{x.name}{x.archived ? " · past" : ""}</option>)}
+                    </select></div>
+                  <div style={{ flex: "1 1 120px" }}><label style={lblS}>{parentLabel(selMob.species, "sire")}</label>
+                    <select value={openA.sire?.id || ""} onChange={(e) => setParentById("sire", e.target.value)} style={inpS}>
+                      <option value="">— none —</option>
+                      {sireOpts.map((x) => <option key={x.id} value={x.id}>{x.name}{x.archived ? " · past" : ""}</option>)}
+                    </select></div>
+                </div>); })()}
               {offspring.length > 0 && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}><strong style={{ color: C.fern }}>Offspring:</strong> {offspring.join(", ")}</div>}
               <label style={lblS}>Notes</label>
               <input value={openA.notes || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
@@ -3338,7 +3381,7 @@ function HarvestCareView({ data, setData, display }) {
 
 function PlantLogger({ data, setData, display }) {
   const areas = data.sections.filter((s) => { const u = SECTION_KINDS[s.kind].uses; return u === "beds" || u === "plants"; });
-  const [openArea, setOpenArea] = useState(() => areas[0]?.id || null);
+  const [openArea, setOpenArea] = useState(null);
   const [openBed, setOpenBed] = useState(null);
   const [openItem, setOpenItem] = useState(null);
   const [mode, setMode] = useState("harvest");
