@@ -326,7 +326,7 @@ const STOCK_BREEDS = {
   goat:    ["Boer", "Saanen", "Nubian", "Toggenburg", "Feral"],
   cattle:  ["Angus", "Hereford", "Jersey", "Friesian", "Kiwicross", "Highland", "Dexter", "Belted Galloway"],
   pig:     ["Kunekune", "Berkshire", "Large Black", "Tamworth", "Duroc"],
-  chicken: ["Brown Shaver", "Hyline Brown", "Plymouth Rock", "Orpington", "Wyandotte", "Leghorn", "Rhode Island Red", "Silkie", "Australorp"],
+  chicken: ["Brown Shaver", "Hyline Brown", "Plymouth Rock", "Orpington", "Wyandotte", "Leghorn", "Rhode Island Red", "Silkie", "Australorp", "Araucana", "Frizzle", "Barnevelder", "Light Sussex", "Pekin"],
 };
 
 function sectionCountLabel(s) {
@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 66";
+const APP_BUILD = "2026-06-25 · build 68";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -378,7 +378,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [] };
+const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -1671,10 +1671,14 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const [openAnimal, setOpenAnimal] = useState(null);
   const [aLog, setALog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [bulkN, setBulkN] = useState("1");
+  const animalPanelRef = useRef(null);
   const choices = speciesFor(section.kind);
   const [f, setF] = useState(() => ({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" }));
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
+  const breedOptions = (species) => [...new Set([...(STOCK_BREEDS[species] || []), ...((data.customBreeds || {})[species] || [])])];
+  const rememberBreed = (species, val) => { const v = (val || "").trim(); if (!v || breedOptions(species).includes(v)) return;
+    setData((d) => ({ ...d, customBreeds: { ...(d.customBreeds || {}), [species]: [...(((d.customBreeds || {})[species]) || []), v] } })); };
   const patchMob = (id, p) => patchSection({ mobs: mobs.map((m) => m.id === id ? { ...m, ...p } : m) });
   const removeMob = (id) => { patchSection({ mobs: mobs.filter((m) => m.id !== id) }); setSel(null); };
   const addMob = () => { const sp = SPECIES[f.species]; if (!sp) return; const klass = f.klass || sp.classes[0]; const n = f.count === "" ? 0 : Math.max(0, Number(f.count) || 0); const breed = f.breed.trim();
@@ -1712,6 +1716,9 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const addIndividual = (mobId) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
       if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id: uid(), name: `${m.klass} ${list.length + 1}`, klass: m.klass, breed: m.breed || "", born: "", notes: "", ferts: [] };
       return { ...m, individuals: [...list, a] }; }) }) }));
+  const addChick = (mobId) => { const id = uid(); setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
+      if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id, name: `Chick ${list.length + 1}`, klass: "Chick", breed: "", born: todayISO(), notes: "", ferts: [] };
+      return { ...m, individuals: [...list, a] }; }) }) })); setOpenAnimal(id); };
   const patchIndividual = (mobId, aId, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => a.id !== aId ? a : { ...a, ...patch }) }) }) }));
   const removeIndividual = (mobId, aId) => { setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((a) => a.id !== aId) }) })) })); setOpenAnimal(null); };
   const moveIndividual = (mobId, aId, toMobId) => { let moved = null;
@@ -1746,6 +1753,17 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
   const openA = selMob && openAnimal ? (selMob.individuals || []).find((x) => x.id === openAnimal) : null;
   const aType = allowedIndiv.includes(aLog.type) ? aLog.type : allowedIndiv[0];
   const moveTargets = selMob ? data.sections.filter((s) => s.id !== section.id && SECTION_KINDS[s.kind].uses === "stock" && (sp?.areas || []).includes(s.kind)) : [];
+  const kin = []; if (selMob) { data.sections.forEach((s) => (s.mobs || []).forEach((mm) => { if (mm.species === selMob.species) (mm.individuals || []).forEach((x) => kin.push({ id: x.id, name: x.name, klass: x.klass, breed: x.breed })); }));
+    (data.archive || []).forEach((r) => { if (r.species === selMob.species) kin.push({ id: r.id, name: r.name, klass: r.klass, breed: r.breed, archived: true }); }); }
+  const kinBreed = (p) => p && p.id ? kin.find((x) => x.id === p.id)?.breed : null;
+  const setParent = (role, name) => { if (!openA) return; const other = role === "dam" ? openA.sire : openA.dam;
+    const match = kin.find((x) => x.name === name && x.id !== openA.id); const parent = name ? { id: match?.id || null, name } : null;
+    const patch = { [role]: parent };
+    if (!openA.breed) { const b1 = match?.breed, b2 = kinBreed(other); const bs = [b1, b2].filter(Boolean); if (bs.length === 2) patch.breed = bs[0] === bs[1] ? bs[0] : `${bs[0]} × ${bs[1]}`; else if (bs.length === 1) patch.breed = bs[0]; }
+    patchIndividual(selMob.id, openA.id, patch); };
+  const offspring = []; if (openA) { data.sections.forEach((s) => (s.mobs || []).forEach((mm) => (mm.individuals || []).forEach((x) => { if (x.dam?.id === openA.id || x.sire?.id === openA.id) offspring.push(x.name); })));
+    (data.archive || []).forEach((r) => { if (r.dam?.id === openA.id || r.sire?.id === openA.id) offspring.push(r.name); }); }
+  useEffect(() => { if (openAnimal && animalPanelRef.current) animalPanelRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [openAnimal]);
 
   return (
     <div>
@@ -1787,8 +1805,8 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
               </div>
               <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>Named automatically (e.g. {(f.klass || "Hen")} 1, {(f.klass || "Hen")} 2) — change each animal's class as they grow.</p>
               <label style={lblS}>Breed (optional)</label>
-              <input list={`breeds-${f.species}`} value={f.breed} onChange={(e) => setF((s) => ({ ...s, breed: e.target.value }))} style={inpS} placeholder="e.g. Romney, Brown Shaver" />
-              <datalist id={`breeds-${f.species}`}>{(STOCK_BREEDS[f.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
+              <input list={`breeds-${f.species}`} value={f.breed} onChange={(e) => setF((s) => ({ ...s, breed: e.target.value }))} onBlur={(e) => rememberBreed(f.species, e.target.value)} style={inpS} placeholder="e.g. Romney, Brown Shaver" />
+              <datalist id={`breeds-${f.species}`}>{breedOptions(f.species).map((b) => <option key={b} value={b} />)}</datalist>
               <label style={lblS}>Mob name / tag (optional)</label>
               <input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} style={inpS} placeholder="e.g. The Romneys, Back paddock flock" />
               <button onClick={addMob} style={{ ...btn(C.fern), marginTop: 10, width: "100%", justifyContent: "center" }}><Check size={15} /> Add to {section.name}</button>
@@ -1817,12 +1835,15 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                     <label style={lblS}>Mob name / tag</label>
                     <input value={m.name || ""} onChange={(e) => patchMob(m.id, { name: e.target.value })} style={inpS} placeholder="optional" />
                     <label style={lblS}>Breed (default for new animals)</label>
-                    <input list={`breeds-m-${m.species}`} value={m.breed || ""} onChange={(e) => patchMob(m.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
-                    <datalist id={`breeds-m-${m.species}`}>{(STOCK_BREEDS[m.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
+                    <input list={`breeds-m-${m.species}`} value={m.breed || ""} onChange={(e) => patchMob(m.id, { breed: e.target.value })} onBlur={(e) => rememberBreed(m.species, e.target.value)} style={inpS} placeholder="optional" />
+                    <datalist id={`breeds-m-${m.species}`}>{breedOptions(m.species).map((b) => <option key={b} value={b} />)}</datalist>
 
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>ANIMALS ({(m.individuals || []).length})</span>
-                      <button onClick={() => addIndividual(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> Add one</button>
+                      <span style={{ display: "flex", gap: 6 }}>
+                        {m.species === "chicken" && <button onClick={() => addChick(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.harvest, color: "#fff", border: "none" }}>🐣 chick</button>}
+                        <button onClick={() => addIndividual(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> Add one</button>
+                      </span>
                     </div>
                     {(m.individuals || []).length === 0 && <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 6px" }}>No animals yet — add some below.</p>}
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1897,7 +1918,7 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
         {/* RIGHT — selected individual animal */}
         <div style={{ flex: "1 1 300px", minWidth: 280 }}>
           {openA ? (
-            <div style={{ ...card }}>
+            <div ref={animalPanelRef} style={{ ...card, position: "sticky", top: 12 }}>
               <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
                 <input value={openA.name} onChange={(e) => patchIndividual(selMob.id, openA.id, { name: e.target.value })} style={{ ...inpS, fontFamily: display, fontSize: 16, fontWeight: 600, flex: 1 }} />
                 <button onClick={() => setOpenAnimal(null)} style={iconBtn}><X size={16} /></button>
@@ -1911,8 +1932,17 @@ function StockArea({ data, setData, section, setNav, sel, setSel, display }) {
                   <input type="date" value={openA.born || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { born: e.target.value })} style={inpS} /></div>
               </div>
               <label style={lblS}>Breed</label>
-              <input list={`breeds-ind-${selMob.species}`} value={openA.breed || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { breed: e.target.value })} style={inpS} placeholder="optional" />
-              <datalist id={`breeds-ind-${selMob.species}`}>{(STOCK_BREEDS[selMob.species] || []).map((b) => <option key={b} value={b} />)}</datalist>
+              <input list={`breeds-ind-${selMob.species}`} value={openA.breed || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { breed: e.target.value })} onBlur={(e) => rememberBreed(selMob.species, e.target.value)} style={inpS} placeholder="optional" />
+              <datalist id={`breeds-ind-${selMob.species}`}>{breedOptions(selMob.species).map((b) => <option key={b} value={b} />)}</datalist>
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Dam (mother)</label>
+                  <input list="kin-list" value={openA.dam?.name || ""} onChange={(e) => setParent("dam", e.target.value)} style={inpS} placeholder="optional" /></div>
+                <div style={{ flex: "1 1 110px" }}><label style={lblS}>Sire (father)</label>
+                  <input list="kin-list" value={openA.sire?.name || ""} onChange={(e) => setParent("sire", e.target.value)} style={inpS} placeholder="optional" /></div>
+              </div>
+              <datalist id="kin-list">{[...new Map(kin.filter((x) => x.id !== openA.id).map((x) => [x.name, x])).values()].map((x) => <option key={x.id} value={x.name}>{x.klass}{x.archived ? " · past" : ""}</option>)}</datalist>
+              {offspring.length > 0 && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}><strong style={{ color: C.fern }}>Offspring:</strong> {offspring.join(", ")}</div>}
               <label style={lblS}>Notes</label>
               <input value={openA.notes || ""} onChange={(e) => patchIndividual(selMob.id, openA.id, { notes: e.target.value })} style={inpS} placeholder="markings, temperament, history…" />
 
