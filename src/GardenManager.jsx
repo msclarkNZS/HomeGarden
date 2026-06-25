@@ -339,7 +339,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 79";
+const APP_BUILD = "2026-06-25 · build 80";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -894,11 +894,11 @@ export default function GardenManager() {
   const vm = viewOverride || data.viewMode || "auto";
   const simple = vm === "simple" || (vm === "auto" && isPhone);
   const FULL_TABS = [
+    { id: "map", label: "Property", icon: Map },
     { id: "harvest", label: "Gather & care", icon: Cherry },
     { id: "season", label: "Do now", icon: CalendarDays },
     ...(hasStock ? [{ id: "stock", label: "Stock", icon: Fence }] : []),
     { id: "weather", label: "Weather", icon: CloudSun },
-    { id: "map", label: "Property", icon: Map },
     { id: "rotation", label: "Rotation", icon: RefreshCw },
     { id: "plants", label: "Library", icon: Sprout },
     { id: "report", label: "Report", icon: FileText },
@@ -3475,6 +3475,30 @@ function EggLogger({ data, setData, display }) {
   const [eggDate, setEggDate] = useState(todayISO());
   const [feedDraft, setFeedDraft] = useState({ date: todayISO(), cost: "", kg: "", note: "" });
   const [saleDraft, setSaleDraft] = useState({ date: todayISO(), eggs: "", amount: "", note: "" });
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importMob, setImportMob] = useState(() => chickenMobs[0]?.m.id || "");
+  const [importMsg, setImportMsg] = useState(null);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const parseDate = (str) => { if (!str) return null; const s = str.trim(); let m;
+    if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+    if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/))) { let y = m[3]; if (y.length === 2) y = "20" + y; return `${y}-${pad2(m[2])}-${pad2(m[1])}`; }
+    const t = Date.parse(s); if (!isNaN(t)) return new Date(t).toISOString().slice(0, 10); return null; };
+  const numOrNull = (x) => { if (x == null || String(x).trim() === "") return null; const v = parseFloat(String(x).replace(/[^0-9.\-]/g, "")); return isNaN(v) ? null : v; };
+  const parsedRows = (() => { const lines = importText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean); if (!lines.length) return [];
+    let start = 0; if (!/^\d/.test(lines[0]) && /date|egg|sold|feed|collect|laid/i.test(lines[0])) start = 1;
+    const rows = []; for (let i = start; i < lines.length; i++) { const p = lines[i].split(/[,\t;]/).map((x) => x.trim()); const date = parseDate(p[0]); if (!date) continue;
+      rows.push({ date, collected: numOrNull(p[1]), sold: numOrNull(p[2]), sale: numOrNull(p[3]), feed: numOrNull(p[4]) }); } return rows; })();
+  const sum = (key) => parsedRows.reduce((n, r) => n + (r[key] || 0), 0);
+  const doImport = () => { if (!parsedRows.length) return;
+    setData((d) => { let sections = d.sections;
+      if (importMob) { const eggEntries = parsedRows.filter((r) => r.collected > 0).map((r) => ({ id: uid(), date: r.date, type: "eggs", qty: r.collected, unit: "eggs", imported: true }));
+        sections = d.sections.map((s) => ({ ...s, mobs: (s.mobs || []).map((m) => m.id !== importMob ? m : { ...m, ferts: [...(m.ferts || []), ...eggEntries] }) })); }
+      const sales = parsedRows.filter((r) => (r.sold || 0) > 0 || (r.sale || 0) > 0).map((r) => ({ id: uid(), date: r.date, eggs: r.sold || 0, amount: r.sale || 0, note: "imported" }));
+      const feeds = parsedRows.filter((r) => (r.feed || 0) > 0).map((r) => ({ id: uid(), date: r.date, cost: r.feed, kg: null, note: "imported" }));
+      return { ...d, sections, eggLedger: { feed: [...((d.eggLedger || {}).feed || []), ...feeds], sales: [...((d.eggLedger || {}).sales || []), ...sales] } }; });
+    setImportMsg(`Imported ${parsedRows.length} row${parsedRows.length === 1 ? "" : "s"} — ${sum("collected")} eggs collected, ${sum("sold")} sold, ${money(sum("sale"))} sales, ${money(sum("feed"))} feed.`);
+    setImportText(""); };
 
   const logEggs = (sectionId, mobId) => { const n = Number(egg[mobId]); if (!n) return;
     setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: [...(m.ferts || []), { id: uid(), date: eggDate || todayISO(), type: "eggs", qty: n, unit: "eggs" }] }) }) }));
@@ -3521,6 +3545,31 @@ function EggLogger({ data, setData, display }) {
         </div>
       </div>
       <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>The full in/out summary — cost per egg, net, kept-egg value — lives in the Report (full view).</p>
+
+      <div style={{ ...card }}>
+        {!showImport ? <button onClick={() => { setShowImport(true); setImportMsg(null); }} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><Upload size={14} /> Import egg history (bulk paste)</button>
+        : <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>📥 Import history</strong>
+            <button onClick={() => setShowImport(false)} style={iconBtn}><X size={16} /></button>
+          </div>
+          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, margin: "0 0 8px" }}>Paste one row per day from your spreadsheet. Columns in this order, separated by commas or tabs: <strong>date, eggs collected, eggs sold, $ from sales, $ feed</strong>. Only the date and one number are required — leave later columns blank. A header row is fine. Dates can be 2024-09-01 or 01/09/2024.</p>
+          {chickenMobs.length > 0 && <>
+            <label style={lblS}>Collected eggs go to</label>
+            <select value={importMob} onChange={(e) => setImportMob(e.target.value)} style={inpS}>
+              {chickenMobs.map(({ m, area }) => <option key={m.id} value={m.id}>{m.name || "Chickens"} · {area}</option>)}
+            </select>
+          </>}
+          <textarea value={importText} onChange={(e) => { setImportText(e.target.value); setImportMsg(null); }} placeholder={"date, collected, sold, sale$, feed$\n2024-09-01, 5\n2024-09-02, 6\n2024-09-07, 4, 12, 8.00\n2024-09-10, 5, 0, 0, 32.50"}
+            style={{ width: "100%", minHeight: 120, marginTop: 6, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "ui-monospace, monospace", fontSize: 12.5, color: C.ink, background: C.panel2 }} />
+          {parsedRows.length > 0 && <div style={{ fontSize: 12, color: C.fernDk, background: hexA(C.fern, .1), borderRadius: 8, padding: "7px 9px", marginTop: 6 }}>
+            Ready: <strong>{parsedRows.length}</strong> day{parsedRows.length === 1 ? "" : "s"} ({fmtDate(parsedRows[0].date)} → {fmtDate(parsedRows[parsedRows.length - 1].date)}) · {sum("collected")} eggs collected{sum("sold") ? ` · ${sum("sold")} sold` : ""}{sum("sale") ? ` · ${money(sum("sale"))} sales` : ""}{sum("feed") ? ` · ${money(sum("feed"))} feed` : ""}
+          </div>}
+          {importText.trim() && parsedRows.length === 0 && <p style={{ fontSize: 12, color: C.beet, marginTop: 6 }}>No rows read yet — check each line starts with a date.</p>}
+          <button onClick={doImport} disabled={!parsedRows.length} style={{ ...btn(parsedRows.length ? C.fern : C.muted), marginTop: 8, width: "100%", justifyContent: "center", opacity: parsedRows.length ? 1 : .6, cursor: parsedRows.length ? "pointer" : "default" }}><Check size={14} /> Import {parsedRows.length || ""} row{parsedRows.length === 1 ? "" : "s"}</button>
+        </>}
+        {importMsg && <p style={{ fontSize: 12.5, color: C.fern, margin: "8px 0 0", lineHeight: 1.5 }}><Check size={13} style={{ verticalAlign: -2 }} /> {importMsg} It'll show in the Report's egg in/out summary.</p>}
+      </div>
     </div>
   );
 }
@@ -3528,15 +3577,7 @@ function EggLogger({ data, setData, display }) {
 function ReportView({ data, setData, month, hemi, display }) {
   const lib = useLib();
   const today = new Date(); const tk = dayKey(today);
-  const [feedDraft, setFeedDraft] = useState({ date: todayISO(), cost: "", kg: "", note: "" });
-  const [saleDraft, setSaleDraft] = useState({ date: todayISO(), eggs: "", amount: "", note: "" });
   const money = (n) => "$" + (Number(n) || 0).toFixed(2);
-  const addFeed = () => { const cost = Number(feedDraft.cost) || 0; const kg = feedDraft.kg === "" ? null : Number(feedDraft.kg); if (!cost && kg == null) return;
-    setData((d) => ({ ...d, eggLedger: { feed: [...((d.eggLedger || {}).feed || []), { id: uid(), date: feedDraft.date || todayISO(), cost, kg, note: feedDraft.note.trim() }], sales: (d.eggLedger || {}).sales || [] } }));
-    setFeedDraft({ date: todayISO(), cost: "", kg: "", note: "" }); };
-  const addSale = () => { const eggs = Number(saleDraft.eggs) || 0; const amount = Number(saleDraft.amount) || 0; if (!eggs && !amount) return;
-    setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: [...((d.eggLedger || {}).sales || []), { id: uid(), date: saleDraft.date || todayISO(), eggs, amount, note: saleDraft.note.trim() }] } }));
-    setSaleDraft({ date: todayISO(), eggs: "", amount: "", note: "" }); };
   const removeLedger = (kind, id) => setData((d) => ({ ...d, eggLedger: { feed: (d.eggLedger || {}).feed || [], sales: (d.eggLedger || {}).sales || [], [kind]: ((d.eggLedger || {})[kind] || []).filter((x) => x.id !== id) } }));
   const season = seasonOf(month, hemi);
   const nextMonth = (month % 12) + 1;
@@ -3768,32 +3809,10 @@ function ReportView({ data, setData, month, hemi, display }) {
               {costPerEgg != null ? <>
                 <div style={row}>Running cost per egg: <strong>{money(costPerEgg)}</strong> · about {money(costPerEgg * 12)}/dozen</div>
                 <div style={row}>The {eggsKept} egg{eggsKept === 1 ? "" : "s"} you kept cost about <strong>{money(keptCost)}</strong> to produce ({eggsKept} × {money(costPerEgg)})</div>
-              </> : <div style={{ ...row, color: C.muted }}>Log feed purchases and eggs laid (from a coop mob's journal) to see a running cost per egg.</div>}
+              </> : <div style={{ ...row, color: C.muted }}>Log feed purchases and eggs laid (from the Gather tab) to see a running cost per egg.</div>}
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                <div style={{ flex: "1 1 240px", border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.panel2 }}>
-                  <strong style={{ fontSize: 12.5, color: C.fernDk }}>🌾 Feed purchased</strong>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                    <input type="date" value={feedDraft.date} onChange={(e) => setFeedDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
-                    <input type="number" min="0" step="any" value={feedDraft.cost} onChange={(e) => setFeedDraft((s) => ({ ...s, cost: e.target.value }))} placeholder="$ cost" style={{ ...inpS, flex: "1 1 70px" }} />
-                    <input type="number" min="0" step="any" value={feedDraft.kg} onChange={(e) => setFeedDraft((s) => ({ ...s, kg: e.target.value }))} placeholder="kg (opt)" style={{ ...inpS, flex: "1 1 70px" }} />
-                  </div>
-                  <input value={feedDraft.note} onChange={(e) => setFeedDraft((s) => ({ ...s, note: e.target.value }))} placeholder="supplier / type (optional)" style={{ ...inpS, marginTop: 6 }} />
-                  <button onClick={addFeed} style={{ ...btn(C.soil), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add feed cost</button>
-                </div>
-                <div style={{ flex: "1 1 240px", border: `1px solid ${C.line}`, borderRadius: 10, padding: 10, background: C.panel2 }}>
-                  <strong style={{ fontSize: 12.5, color: C.fernDk }}>🥚 Eggs sold</strong>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                    <input type="date" value={saleDraft.date} onChange={(e) => setSaleDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
-                    <input type="number" min="0" step="1" value={saleDraft.eggs} onChange={(e) => setSaleDraft((s) => ({ ...s, eggs: e.target.value }))} placeholder="eggs" style={{ ...inpS, flex: "1 1 70px" }} />
-                    <input type="number" min="0" step="any" value={saleDraft.amount} onChange={(e) => setSaleDraft((s) => ({ ...s, amount: e.target.value }))} placeholder="$ in" style={{ ...inpS, flex: "1 1 70px" }} />
-                  </div>
-                  <input value={saleDraft.note} onChange={(e) => setSaleDraft((s) => ({ ...s, note: e.target.value }))} placeholder="buyer (optional)" style={{ ...inpS, marginTop: 6 }} />
-                  <button onClick={addSale} style={{ ...btn(C.harvest), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add egg sale</button>
-                </div>
-              </div>
               {ledgerRows.length > 0 && <>
-                <div style={{ ...row, color: C.muted, marginTop: 8 }}>Entries in this window:</div>
+                <div style={{ ...row, color: C.muted, marginTop: 8 }}>Entries in this window <span style={{ fontSize: 11 }}>(add new ones from the Gather tab):</span></div>
                 {ledgerRows.slice(0, 40).map((x) => (
                   <div key={x.kind + x.id} style={{ ...row, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
