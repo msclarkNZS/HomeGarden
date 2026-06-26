@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 94";
+const APP_BUILD = "2026-06-25 · build 95";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -416,6 +416,10 @@ function normalize(d) {
   base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
+  // Areas show a live crop of the property photo; older builds saved a per-area image.
+  // Strip those leftovers so every area falls back to the crop consistently.
+  base.sections = base.sections.map((s) => { const { bg, bgAR, ...rest } = s;
+    return { ...rest, beds: (rest.beds || []).map((b) => { const { bg: bbg, bgAR: bbgAR, ...brest } = b; return brest; }) }; });
   base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [], purchases: (base.eggLedger?.purchases) || [], birdSales: (base.eggLedger?.birdSales) || [] };
   base.skips = base.skips || {};
   base.stockDone = base.stockDone || {};
