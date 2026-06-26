@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 93";
+const APP_BUILD = "2026-06-25 · build 94";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -902,7 +902,7 @@ export default function GardenManager() {
     { id: "map", label: "Property", icon: Map },
     { id: "harvest", label: "Gather & care", icon: Cherry },
     { id: "season", label: "Do now", icon: CalendarDays },
-    ...(hasStock ? [{ id: "stock", label: "Stock", icon: Fence }] : []),
+    ...(hasStock ? [{ id: "stock", label: "Animals", icon: Fence }] : []),
     { id: "weather", label: "Weather", icon: CloudSun },
     { id: "rotation", label: "Rotation", icon: RefreshCw },
     { id: "plants", label: "Library", icon: Sprout },
@@ -1150,6 +1150,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
   const [zoom, setZoom] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [editSel, setEditSel] = useState(null);
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
   const delSection = (id) => setData((d) => ({ ...d, sections: d.sections.filter((s) => s.id !== id) }));
   const drag = useDrag(wrapRef, patchSection);
@@ -1194,22 +1195,24 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
           </div>)}
       </div>
 
-      {editMode && data.sections.length > 0 && (
+      {editMode && data.sections.length > 0 && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s).text : "";
+        return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
-          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area sizes &amp; angle</strong>
-          {data.dimM?.w ? <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>Type an exact size (or drag the corner on the map), and rotate any area that doesn't sit square to the photo.</p>
-            : <p style={{ fontSize: 11.5, color: C.beet, margin: "3px 0 8px" }}>Set the whole-property size in Property settings first, then you can size each area in metres.</p>}
-          {data.sections.map((s) => { const sk = SECTION_KINDS[s.kind]; const note = sectionCountLabel(s).text;
-            return (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.ink, minWidth: 120, fontWeight: 600 }}>{s.name}</span>
-              {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => { const b = boxFromReal(real, data.dimM); patchSection(s.id, b); }} />
-                : <span style={{ fontSize: 12, color: C.muted }}>—</span>}
-              <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />
-              <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
-              <ConfirmButton onConfirm={() => delSection(s.id)} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
-            </div>); })}
-        </div>)}
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area size &amp; angle</strong>
+          {!s ? <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 0", lineHeight: 1.5 }}>Tap an area on the map to set its size and angle, or remove it.{!data.dimM?.w ? " (Set the whole-property size in Property settings first to size areas in metres.)" : ""}</p>
+          : <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{s.name}</span>
+                <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
+                <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => { const b = boxFromReal(real, data.dimM); patchSection(s.id, b); }} />
+                  : <span style={{ fontSize: 12, color: C.beet }}>Set the whole-property size first to size this in metres.</span>}
+                <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />
+              </div>
+            </div>}
+        </div>); })()}
 
       <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} editMode={editMode}
         placeholder={!data.bg && (
@@ -1224,8 +1227,8 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
             <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
-              onClick={editMode ? undefined : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              onClick={editMode ? (e) => { e.stopPropagation(); setEditSel(s.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
@@ -1236,7 +1239,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
             </div>
           ); })}
       </MapShell>
-      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · drag the ⌟ corner to resize (the size in metres updates live). Tap “Done editing” when finished." : "Tap a section to go inside it. Tap “Edit layout” to move or add areas."}</p>
+      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · drag the ⌟ corner to resize · tap an area to set its exact size & angle above. Tap “Done editing” when finished." : "Tap a section to go inside it. Tap “Edit layout” to move or add areas."}</p>
     </div>
   );
 }
@@ -1256,6 +1259,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [hUnit, setHUnit] = useState("kg");
   const [hNote, setHNote] = useState("");
   const [hSel, setHSel] = useState({}); // planting key -> false means unticked
+  const [editSel, setEditSel] = useState(null);
   const k = SECTION_KINDS[section.kind];
   const usesBeds = k.uses === "beds";
   const north = data.north ?? 0;
@@ -1369,64 +1373,74 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             </>)}
           </div>);
       })()}
-      {editMode && usesBeds && (section.beds || []).length > 0 && (
+      {editMode && usesBeds && (section.beds || []).length > 0 && (() => { const b = (section.beds || []).find((x) => x.id === editSel);
+        return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
-          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Bed sizes &amp; angle</strong>
-          <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>{sectionReal ? "Type each bed's real size (or drag its corner), and rotate any bed that runs at an angle." : "Rotate any bed that runs at an angle. Set the property & area sizes to size beds in metres too."}</p>
-          {(section.beds || []).map((b) => { const cnt = bedPlantings(b).map(plantingAsCell).filter((c) => !c.removed).length; const note = cnt ? `${cnt} planting${cnt === 1 ? "" : "s"}` : "empty";
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Bed size &amp; angle</strong>
+          {!b ? <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 0", lineHeight: 1.5 }}>Tap a bed on the map to set its size, grid and angle, or remove it.{!sectionReal ? " (Set the property & area sizes first to size beds in metres.)" : ""}</p>
+          : (() => { const cnt = bedPlantings(b).map(plantingAsCell).filter((c) => !c.removed).length; const note = cnt ? `${cnt} planting${cnt === 1 ? "" : "s"}` : "empty";
             return (
-            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.ink, minWidth: 90, fontWeight: 600 }}>{b.name}</span>
-              {sectionReal && <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />}
-              <RotateField rot={b.rot} onChange={(rot) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, rot } : x) })} />
-              <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
-              {(() => { const br = realOf(b.w, b.h, sectionReal); if (!br) return null;
-                const curSq = b.sq || 0.25; const other = curSq === 0.25 ? 0.5 : 0.25; const ng = bedFineGrid({ ...b, sq: curSq }, br);
-                return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 11.5, color: C.muted }}>{curSq} m sq ({ng.gw}×{ng.gh})</span>
-                  <ConfirmButton onConfirm={() => { const n = bedFineGrid({ ...b, sq: other }, br); const og = b.grid || { w: ng.gw, h: ng.gh };
-                      patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, plantings: regridBed({ ...x, plantings: bedPlantings(x) }, og, n.gw, n.gh), grid: { w: n.gw, h: n.gh }, sq: other } : x) }); }}
-                    style={{ ...btnOutline(C.fern), padding: "5px 9px", fontSize: 12 }} armedLabel={`Re-grid to ${other} m? (regroups plantings)`}>→ {other} m</ConfirmButton>
-                </span>); })()}
-              <ConfirmButton onConfirm={() => patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) })} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
-            </div>); })}
-        </div>)}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{b.name}</span>
+                <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
+                <ConfirmButton onConfirm={() => { patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) }); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {sectionReal ? <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />
+                  : <span style={{ fontSize: 12, color: C.beet }}>Set the property &amp; area sizes first to size beds in metres.</span>}
+                <RotateField rot={b.rot} onChange={(rot) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, rot } : x) })} />
+                {(() => { const br = realOf(b.w, b.h, sectionReal); if (!br) return null;
+                  const curSq = b.sq || 0.25; const other = curSq === 0.25 ? 0.5 : 0.25; const ng = bedFineGrid({ ...b, sq: curSq }, br);
+                  return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 11.5, color: C.muted }}>{curSq} m sq ({ng.gw}×{ng.gh})</span>
+                    <ConfirmButton onConfirm={() => { const n = bedFineGrid({ ...b, sq: other }, br); const og = b.grid || { w: ng.gw, h: ng.gh };
+                        patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, plantings: regridBed({ ...x, plantings: bedPlantings(x) }, og, n.gw, n.gh), grid: { w: n.gw, h: n.gh }, sq: other } : x) }); }}
+                      style={{ ...btnOutline(C.fern), padding: "5px 9px", fontSize: 12 }} armedLabel={`Re-grid to ${other} m? (regroups plantings)`}>→ {other} m</ConfirmButton>
+                  </span>); })()}
+              </div>
+            </div>); })()}
+        </div>); })()}
 
-      {editMode && !usesBeds && (section.plants || []).length > 0 && (
+      {editMode && !usesBeds && (section.plants || []).length > 0 && (() => { const p = (section.plants || []).find((x) => x.id === editSel);
+        return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
-          <strong style={{ fontSize: 13.5, color: C.fernDk }}>{section.kind === "berry" ? "Bushes, canes & hedges" : "Trees & hedges"}</strong>
-          <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px" }}>Set each one's shape and size here — these rarely change once planted. Drag them into place on the map.</p>
-          {(section.plants || []).map((p) => { const dup = (section.plants || []).filter((x) => x.plant === p.plant); const idx = dup.indexOf(p);
-            const isHedge = p.shape === "hedge";
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>{section.kind === "berry" ? "Bush, cane or hedge" : "Tree or hedge"}</strong>
+          {!p ? <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 0", lineHeight: 1.5 }}>Tap one on the map to set its shape and size, or remove it.</p>
+          : (() => { const dup = (section.plants || []).filter((x) => x.plant === p.plant); const idx = dup.indexOf(p); const isHedge = p.shape === "hedge";
             return (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.ink, minWidth: 96, fontWeight: 600 }}>{p.plant}{dup.length > 1 ? ` #${idx + 1}` : ""}</span>
-              <select value={isHedge ? "hedge" : (p.icon || "tree")} onChange={(e) => { const v = e.target.value; patchItem(p.id, v === "hedge" ? { shape: "hedge", w: p.w ?? 30, h: p.h ?? 8 } : { shape: null, icon: v }); }}
-                style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
-                <option value="tree">Tree</option><option value="bush">Bush</option><option value="cane">Cane</option><option value="hedge">Hedge (row)</option>
-              </select>
-              {isHedge ? (sectionReal?.w ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <input type="number" min="0" step="0.5" value={Math.round((p.w ?? 30) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { w: clamp(m / sectionReal.w * 100, 2, 100) }); }} title="length (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                  <span style={{ color: C.muted, fontSize: 12 }}>×</span>
-                  <input type="number" min="0" step="0.5" value={Math.round((p.h ?? 8) / 100 * sectionReal.l * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { h: clamp(m / sectionReal.l * 100, 2, 100) }); }} title="width (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                  <span style={{ fontSize: 11, color: C.muted }}>m</span>
-                </span>
-              ) : <span style={{ fontSize: 11.5, color: C.muted }}>drag ⌟ to size</span>) : (sectionReal?.w ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <input type="number" min="0" step="0.5" value={Math.round((p.dia ?? 12) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { dia: clamp(m / sectionReal.w * 100, 2, 80) }); }} title="canopy ⌀ (m)" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                  <span style={{ fontSize: 11, color: C.muted }}>m ⌀</span>
-                </span>
-              ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <input type="range" min={3} max={40} value={p.dia ?? 12} onChange={(e) => patchItem(p.id, { dia: Number(e.target.value) })} style={{ width: 80, accentColor: C.fern }} />
-                  <span style={{ fontSize: 11, color: C.muted }}>⌀</span>
-                </span>
-              ))}
-              {isHedge && <RotateField rot={p.rot} onChange={(rot) => patchItem(p.id, { rot })} />}
-              <ConfirmButton onConfirm={() => removePlant(p.id)} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
-            </div>); })}
-        </div>)}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{p.plant}{dup.length > 1 ? ` #${idx + 1}` : ""}</span>
+                <ConfirmButton onConfirm={() => { removePlant(p.id); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <select value={isHedge ? "hedge" : (p.icon || "tree")} onChange={(e) => { const v = e.target.value; patchItem(p.id, v === "hedge" ? { shape: "hedge", w: p.w ?? 30, h: p.h ?? 8 } : { shape: null, icon: v }); }}
+                  style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
+                  <option value="tree">Tree</option><option value="bush">Bush</option><option value="cane">Cane</option><option value="hedge">Hedge (row)</option>
+                </select>
+                {isHedge ? (sectionReal?.w ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <input type="number" min="0" step="0.5" value={Math.round((p.w ?? 30) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { w: clamp(m / sectionReal.w * 100, 2, 100) }); }} title="length (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+                    <span style={{ color: C.muted, fontSize: 12 }}>×</span>
+                    <input type="number" min="0" step="0.5" value={Math.round((p.h ?? 8) / 100 * sectionReal.l * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { h: clamp(m / sectionReal.l * 100, 2, 100) }); }} title="width (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+                    <span style={{ fontSize: 11, color: C.muted }}>m</span>
+                  </span>
+                ) : <span style={{ fontSize: 11.5, color: C.muted }}>drag ⌟ to size</span>) : (sectionReal?.w ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <input type="number" min="0" step="0.5" value={Math.round((p.dia ?? 12) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { dia: clamp(m / sectionReal.w * 100, 2, 80) }); }} title="canopy ⌀ (m)" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
+                    <span style={{ fontSize: 11, color: C.muted }}>m ⌀</span>
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <input type="range" min={3} max={40} value={p.dia ?? 12} onChange={(e) => patchItem(p.id, { dia: Number(e.target.value) })} style={{ width: 80, accentColor: C.fern }} />
+                    <span style={{ fontSize: 11, color: C.muted }}>⌀</span>
+                  </span>
+                ))}
+                {isHedge && <RotateField rot={p.rot} onChange={(rot) => patchItem(p.id, { rot })} />}
+              </div>
+            </div>); })()}
+        </div>); })()}
 
       {/* tree/berry chooser */}
       {!usesBeds && picker && (
@@ -1474,8 +1488,8 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               return (
                 <div key={b.id}
                   onPointerDown={editMode ? (e) => drag.onPointerDown(e, b, "move") : undefined}
-                  onClick={editMode ? undefined : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2 }}>
+                  onClick={editMode ? (e) => { e.stopPropagation(); setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span></div>
                   <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n]; const planned = bedPlantings(b).map(plantingAsCell).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
@@ -1493,9 +1507,9 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   </div>
                 </div>); })}
 
-            {!usesBeds && (section.plants || []).filter((p) => visibleAt(p, viewDate)).map((p) => { const on = selPlant?.id === p.id;
+            {!usesBeds && (section.plants || []).filter((p) => visibleAt(p, viewDate)).map((p) => { const on = editMode ? editSel === p.id : selPlant?.id === p.id;
               const canopy = lib.color(p.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
-              const select = editMode ? undefined : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
+              const select = editMode ? (e) => { e.stopPropagation(); setEditSel(p.id); } : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
               const down = editMode ? (e) => drag.onPointerDown(e, p, "move") : undefined;
               if (p.shape === "hedge") {
                 const w = p.w ?? 30, h = p.h ?? 8;
@@ -1515,7 +1529,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
           </MapShell>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · drag the ⌟ corner to resize. Tap “Done” to lock the layout." : "Drag to move · drag the ⌟ corner of a hedge to resize. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · drag the ⌟ corner to resize · tap a bed to set its size & grid above. Tap “Done” to finish." : "Drag to move · drag the ⌟ corner of a hedge to resize · tap one to set its shape & size above. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
         </div>
 
         {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
@@ -2646,7 +2660,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
     // calendar tasks: one card per species present
     Object.keys(presentSpecies).forEach((sp) => { const def = stockLib[sp]; if (!def) return;
       (def.tasks || []).filter((t) => t.mode === "calendar").forEach((t) => { const due = (t.months || []).includes(sMonth); const near = due || (t.months || []).includes(sNext);
-        const dKey = `${sp}|${t.name}|${curYM}`; if (near && !(data.stockDone || {})[dKey]) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Stock", due, dueDk: due ? tk : firstNextMonthDk, go: { kind: "stock", sectionId: presentSpecies[sp] },
+        const dKey = `${sp}|${t.name}|${curYM}`; if (near && !(data.stockDone || {})[dKey]) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Animals", due, dueDk: due ? tk : firstNextMonthDk, go: { kind: "stock", sectionId: presentSpecies[sp] },
           done: () => setData((d) => ({ ...d, stockDone: { ...(d.stockDone || {}), [dKey]: true } })) }); });
     });
     // interval tasks: per mob, due/overdue from its journal
