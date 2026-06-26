@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
- *  Glenbrook Garden Manager — v2
+ *  Lifestyle Block Manager — v2
  *  Property overview → sections → bed grids / tree markers.
  *  Tuned to the Franklin / Auckland climate (NZ).
  * ------------------------------------------------------------------ */
@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 88";
+const APP_BUILD = "2026-06-25 · build 89";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -377,7 +377,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Glenbrook Garden", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
+const blank = { propertyName: "Our Lifestyle Block", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -924,7 +924,7 @@ export default function GardenManager() {
     }
   }, [simple, loaded, hasStock]);
 
-  if (!loaded) return <div style={{ fontFamily: body, background: C.bg, color: C.muted, minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center" }}>Opening your garden…</div>;
+  if (!loaded) return <div style={{ fontFamily: body, background: C.bg, color: C.muted, minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center" }}>Opening your block…</div>;
 
   return (
     <LibCtx.Provider value={lib}>
@@ -3359,7 +3359,7 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
     try {
       const blob = new Blob([JSON.stringify(data, null, 0)], { type: "application/json" });
       const url = URL.createObjectURL(blob); const a = document.createElement("a");
-      a.href = url; a.download = `garden-backup-${todayISO()}.json`; a.click();
+      a.href = url; a.download = `lifestyle-block-backup-${todayISO()}.json`; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) { alert("Couldn't create the backup file."); }
   };
@@ -3368,9 +3368,9 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
     const r = new FileReader();
     r.onload = () => { try { const parsed = JSON.parse(r.result);
         if (!parsed || typeof parsed !== "object" || !("sections" in parsed)) throw new Error("shape");
-        if (!confirm("Restore this backup? It replaces the garden currently in this browser.")) return;
+        if (!confirm("Restore this backup? It replaces everything currently saved in this browser.")) return;
         setData(normalize(parsed)); close();
-      } catch { alert("That doesn't look like a garden backup file."); } };
+      } catch { alert("That doesn't look like a backup file."); } };
     r.onerror = () => alert("Couldn't read that file.");
     r.readAsText(f);
   };
@@ -3379,10 +3379,16 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
     <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(20,28,22,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...card, width: 440, maxWidth: "100%", maxHeight: "86vh", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <strong style={{ fontFamily: "'Fraunces',serif", fontSize: 18, flex: 1 }}>Property location</strong>
+          <strong style={{ fontFamily: "'Fraunces',serif", fontSize: 18, flex: 1 }}>Settings</strong>
           <button onClick={close} style={iconBtn}><X size={18} /></button>
         </div>
-        <div style={{ ...card, padding: 11, marginTop: 8, background: C.panel2 }}>
+
+        <label style={lbl}>Property name</label>
+        <input value={data.propertyName} onChange={(e) => setData((d) => ({ ...d, propertyName: e.target.value }))} placeholder="e.g. Our Lifestyle Block" style={inpS} />
+        <p style={{ fontSize: 11.5, color: C.muted, margin: "4px 0 0", lineHeight: 1.5 }}>This is the name shown across the top of the app. You can also tap it up there to rename it.</p>
+
+        <label style={lbl}>Property location</label>
+        <div style={{ ...card, padding: 11, marginTop: 4, background: C.panel2 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: C.fernDk }}>{place.name}{place.region ? `, ${place.region}` : ""}</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{place.lat.toFixed(3)}, {place.lon.toFixed(3)} · {place.hemisphere === "south" ? "Southern" : "Northern"} hemisphere</div>
         </div>
