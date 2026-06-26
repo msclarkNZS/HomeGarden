@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 90";
+const APP_BUILD = "2026-06-25 · build 91";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -377,7 +377,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Lifestyle Block", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {} };
+const blank = { propertyName: "Our Lifestyle Block", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {}, stockDone: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -418,6 +418,7 @@ function normalize(d) {
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
   base.eggLedger = { feed: (base.eggLedger?.feed) || [], sales: (base.eggLedger?.sales) || [], purchases: (base.eggLedger?.purchases) || [], birdSales: (base.eggLedger?.birdSales) || [] };
   base.skips = base.skips || {};
+  base.stockDone = base.stockDone || {};
   { const _td = todayISO(); base.snoozes = Object.fromEntries(Object.entries(base.snoozes || {}).filter(([, v]) => typeof v === "string" && v >= _td)); }
   base.viewMode = base.viewMode || "auto"; base.phoneLanding = base.phoneLanding || "season";
   base.sections = pruneEmptyMobs(base.sections);
@@ -1608,14 +1609,18 @@ function StockPage({ data, setData, display, focusId, onBack }) {
   useEffect(() => { if (focusId) setExpanded((e) => ({ ...e, [focusId]: true })); }, [focusId]);
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
   const totalHead = areas.flatMap((s) => s.mobs || []).reduce((n, m) => n + mobHead(m), 0);
+  const bySpecies = (() => { const o = {}; areas.flatMap((s) => s.mobs || []).forEach((m) => { o[m.species] = (o[m.species] || 0) + mobHead(m); }); return o; })();
 
   return (
     <div>
       {onBack && <button onClick={onBack} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-        <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Stock</h2>
+        <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Animals</h2>
         {areas.length > 0 && <span style={{ ...chip, background: hexA(C.fern, .14), color: C.fernDk, border: "none" }}>{totalHead} head</span>}
       </div>
+      {Object.keys(bySpecies).length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        {Object.entries(bySpecies).sort((a, b) => b[1] - a[1]).map(([sp, n]) => <span key={sp} style={{ ...chip, background: hexA(C.sage, .18), color: C.fernDk, border: "none" }}>{SPECIES[sp]?.emoji || "•"} {n} {SPECIES[sp]?.label || sp}</span>)}
+      </div>}
       <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 14, lineHeight: 1.5 }}>Every paddock and coop in one place — open any to manage its mobs and animals, or several at once to move stock between them.</p>
 
       {areas.length === 0 ? (
@@ -2565,7 +2570,7 @@ function bedFamily(bed, viewDate) {
 function DoNowView({ data, setData, month, hemi = "south", display, setTab, setNav, setSel, goStock }) {
   const lib = useLib();
   const [showSkipped, setShowSkipped] = useState(false);
-  const [snoozeKey, setSnoozeKey] = useState(null);
+  const [jobModal, setJobModal] = useState(null);
   const sowable = lib.veg.filter((v) => (v.sow || []).includes(month));
   const seasonName = seasonOf(month, hemi).toLowerCase();
   const winter = seasonOf(month, hemi) === "Winter";
@@ -2612,11 +2617,13 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
           if (active && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
         }
       }
-      if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go }); });
+      if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go,
+        done: () => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id !== s.id ? x : { ...x, beds: (x.beds || []).map((bb) => bb.id !== b.id ? bb : { ...bb, cells: (bb.cells || []).map((cc) => cc.id !== c.id ? cc : { ...cc, doneTasks: [...(cc.doneTasks || []), `${t.name}|${curYM}`] }) }) }) })) }); });
     }));
     (s.plants || []).forEach((p) => { const meta = lib.fruitByName(p.plant) || lib.berryByName(p.plant); if (!meta) return;
       const go = { kind: "marker", sectionId: s.id, plantId: p.id };
-      (meta.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(p, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${p.plant}`, detail: monthsLabel(t.months), where: s.name, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go }); });
+      (meta.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(p, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${p.plant}`, detail: monthsLabel(t.months), where: s.name, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go,
+        done: () => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id !== s.id ? x : { ...x, plants: (x.plants || []).map((pp) => pp.id !== p.id ? pp : { ...pp, doneTasks: [...(pp.doneTasks || []), `${t.name}|${curYM}`] }) }) })) }); });
       const vrt = (meta.varieties || []).find((v) => v.name === p.variety);
       const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
       if (hmon.includes(month) || hmon.includes(nextMonth)) {
@@ -2635,7 +2642,8 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
     // calendar tasks: one card per species present
     Object.keys(presentSpecies).forEach((sp) => { const def = stockLib[sp]; if (!def) return;
       (def.tasks || []).filter((t) => t.mode === "calendar").forEach((t) => { const due = (t.months || []).includes(sMonth); const near = due || (t.months || []).includes(sNext);
-        if (near) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Stock", due, dueDk: due ? tk : firstNextMonthDk, go: { kind: "stock", sectionId: presentSpecies[sp] } }); });
+        const dKey = `${sp}|${t.name}|${curYM}`; if (near && !(data.stockDone || {})[dKey]) addCare({ icon: tIcon(t.name), what: `${t.name} — ${def.label}`, detail: t.detail, where: "Stock", due, dueDk: due ? tk : firstNextMonthDk, go: { kind: "stock", sectionId: presentSpecies[sp] },
+          done: () => setData((d) => ({ ...d, stockDone: { ...(d.stockDone || {}), [dKey]: true } })) }); });
     });
     // interval tasks: per mob, due/overdue from its journal
     data.sections.forEach((s) => (s.mobs || []).forEach((m) => { const def = stockLib[m.species]; if (!def) return;
@@ -2710,24 +2718,16 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
         </Panel>
 
         <Panel title="Jobs due soon" icon={Scissors}>
-          {liveCare.length ? liveCare.map((t, i) => { const Ic = t.icon; const sopen = snoozeKey === t.key; return (
-            <div key={t.key} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <div onClick={() => goTo(t.go)} style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, flex: 1, minWidth: 0 }}><Ic size={13} color={t.due ? C.harvest : C.fern} /> <span style={{ flex: 1, color: C.fern, textDecoration: "underline", textDecorationColor: hexA(C.fern, .35), overflow: "hidden", textOverflow: "ellipsis" }}>{t.what}</span></div>
+          {liveCare.length ? liveCare.map((t, i) => { const Ic = t.icon; return (
+            <button key={t.key} onClick={() => setJobModal(t)} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: "transparent", border: "none", borderBottom: `1px solid ${C.line}`, padding: "9px 2px", display: "block" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Ic size={14} color={t.due ? C.harvest : C.fern} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: C.fernDk, overflow: "hidden", textOverflow: "ellipsis" }}>{t.what}</span>
                 {t.tag ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(t.due ? C.harvest : C.sage, .18), color: t.due ? C.harvest : C.fernDk, border: "none" }}>{t.tag}</span> : t.due ? <span style={{ ...chip, fontSize: 10, padding: "1px 6px", background: hexA(C.harvest, .18), color: C.harvest, border: "none" }}>now</span> : <span style={{ fontSize: 10.5, color: C.muted }}>soon</span>}
-                <button onClick={(e) => { e.stopPropagation(); setSnoozeKey(sopen ? null : t.key); }} title="Snooze for a while" style={{ ...iconBtn, color: sopen ? C.fern : C.muted }}><Clock size={14} /></button>
-                <button onClick={(e) => { e.stopPropagation(); skip(t.key); }} title="Skip this for the rest of the month" style={{ ...iconBtn, color: C.muted }}><X size={14} /></button>
+                <ChevronLeft size={14} color={C.muted} style={{ transform: "rotate(180deg)", flexShrink: 0 }} />
               </div>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <div onClick={() => goTo(t.go)} style={{ flex: 1, fontSize: 12, color: C.muted, lineHeight: 1.4, cursor: "pointer" }}>{t.detail} · {t.where}</div>
-                {t.done && <button onClick={(e) => { e.stopPropagation(); t.done(); }} style={{ ...chip, cursor: "pointer", flexShrink: 0, padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Check size={11} style={{ verticalAlign: -1 }} /> Done</button>}
-              </div>
-              {sopen && <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11.5, color: C.muted }}>Snooze:</span>
-                {[["3 days", 3], ["1 week", 7], ["2 weeks", 14]].map(([lbl, dys]) => <button key={dys} onClick={() => snooze(t, dys)} style={{ ...chip, cursor: "pointer", padding: "3px 10px", background: hexA(C.fern, .12), color: C.fernDk, border: `1px solid ${hexA(C.fern, .3)}` }}>{lbl}</button>)}
-                {t.dueDk != null && t.dueDk > tk && <span style={{ fontSize: 10.5, color: C.muted }}>· won't hide past its due date</span>}
-              </div>}
-            </div>); }) : <p style={pMuted}>{hiddenCount ? "Everything's either done, snoozed or skipped for now." : "Nothing due this month or next for the plants and stock you've placed. Tasks come from each plant's settings and the Stock guide."}</p>}
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, marginTop: 2 }}>{t.detail} · {t.where}</div>
+            </button>); }) : <p style={pMuted}>{hiddenCount ? "Everything's either done, snoozed or skipped for now." : "Nothing due this month or next for the plants and stock you've placed. Tasks come from each plant's settings and the Stock guide."}</p>}
           {hiddenCount > 0 && (
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
               <button onClick={() => setShowSkipped((v) => !v)} style={{ ...linkBtn, fontSize: 12 }}>{showSkipped ? "Hide" : "Show"} {hiddenCount} snoozed/skipped {showSkipped ? "▾" : "▸"}</button>
@@ -2775,11 +2775,36 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
           </ul>
         </Panel>
       </div>
+
+      {jobModal && (() => { const t = jobModal; const Ic = t.icon; const close = () => setJobModal(null);
+        return (
+        <div onClick={close} style={{ position: "fixed", inset: 0, background: "rgba(20,28,22,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ ...card, width: 360, maxWidth: "100%" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <Ic size={18} color={t.due ? C.harvest : C.fern} style={{ marginTop: 2, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: display, fontSize: 16, fontWeight: 600, color: C.fernDk, lineHeight: 1.25 }}>{t.what}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{t.detail} · {t.where}</div>
+              </div>
+              <button onClick={close} style={iconBtn}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+              {t.done && <button onClick={() => { t.done(); close(); }} style={{ ...btn(C.fern), justifyContent: "center" }}><Check size={15} /> Mark done</button>}
+              {t.go && <button onClick={() => { goTo(t.go); close(); }} style={{ ...btnOutline(C.fern), justifyContent: "center" }}><ArrowRight size={15} /> Go to it</button>}
+              <div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 5, display: "flex", alignItems: "center", gap: 5 }}><Clock size={13} /> Snooze{t.dueDk != null && t.dueDk > tk ? " — won't hide past its due date" : ""}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[["3 days", 3], ["1 week", 7], ["2 weeks", 14]].map(([lbl, dys]) => <button key={dys} onClick={() => { snooze(t, dys); close(); }} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: hexA(C.fern, .12), color: C.fernDk, border: `1px solid ${hexA(C.fern, .3)}` }}>{lbl}</button>)}
+                </div>
+              </div>
+              <button onClick={() => { skip(t.key); close(); }} style={{ ...btnOutline(C.muted), justifyContent: "center" }}><X size={14} /> Skip for the rest of this month</button>
+            </div>
+          </div>
+        </div>); })()}
     </div>
   );
 }
-
-// =========================== ROTATION =============================
 function RotationView({ data, month, display, setTab, setNav }) {
   const lib = useLib();
   const today = new Date();
@@ -3637,6 +3662,7 @@ function EggLogger({ data, setData, display }) {
   const removeLedger = (kind, id) => ledgerWrite((L) => ({ ...L, [kind]: (L[kind] || []).filter((x) => x.id !== id) }));
   const [showImport, setShowImport] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showMoney, setShowMoney] = useState(false);
   const [logFilter, setLogFilter] = useState("all");
   const editEgg = (sectionId, mobId, id, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).map((f) => f.id !== id ? f : { ...f, ...patch }) }) }) }));
   const removeEgg = (sectionId, mobId, id) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, ferts: (m.ferts || []).filter((f) => f.id !== id) }) }) }));
@@ -3682,15 +3708,18 @@ function EggLogger({ data, setData, display }) {
         <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥚 Eggs collected</strong>
         <div style={{ marginTop: 6, marginBottom: 8 }}><input type="date" value={eggDate} onChange={(e) => setEggDate(e.target.value)} style={{ ...inpS, width: "auto", fontSize: 12 }} /></div>
         {chickenMobs.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No chicken mobs yet. Add one in Animals first.</p>
-          : chickenMobs.map(({ m, area, sectionId }) => (
+          : chickenMobs.map(({ m, area, sectionId }) => { const enteredToday = (m.ferts || []).some((f) => f.type === "eggs" && f.date === todayISO()); const todayQty = (m.ferts || []).filter((f) => f.type === "eggs" && f.date === todayISO()).reduce((n, f) => n + (Number(f.qty) || 0), 0); return (
             <div key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
-              <span style={{ flex: "1 1 120px", fontSize: 13, color: C.ink }}>{m.name || "Chickens"} <span style={{ color: C.muted, fontSize: 11 }}>· {area} · {mobHead(m)} birds</span></span>
+              <span style={{ flex: "1 1 120px", fontSize: 13, color: C.ink }}>{m.name || "Chickens"} <span style={{ color: C.muted, fontSize: 11 }}>· {area} · {mobHead(m)} birds</span>
+                {enteredToday && <span style={{ ...chip, marginLeft: 6, fontSize: 10, padding: "1px 7px", background: hexA(C.fern, .16), color: C.fern, border: "none" }}><Check size={10} style={{ verticalAlign: -1 }} /> {todayQty} in today</span>}</span>
               <input type="number" min="0" step="1" value={egg[m.id] || ""} onChange={(e) => setEgg((s) => ({ ...s, [m.id]: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && logEggs(sectionId, m.id)} placeholder="eggs" style={{ ...inpS, flex: "0 0 80px" }} />
               <button onClick={() => logEggs(sectionId, m.id)} style={btn(C.harvest)}><Plus size={14} /></button>
-            </div>))}
+            </div>); })}
+        <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>A green ✓ means eggs have already been logged for today. The date above lets you back-date a collection.</p>
       </div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <button onClick={() => setShowMoney((v) => !v)} style={{ ...btnOutline(C.fern), justifyContent: "center" }}>{showMoney ? "▾ Hide" : "▸ Show"} feed, sales & bird costs</button>
+      {showMoney && <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 240px", ...card }}>
           <strong style={{ fontSize: 12.5, color: C.fernDk }}>🌾 Feed purchased</strong>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
@@ -3731,7 +3760,7 @@ function EggLogger({ data, setData, display }) {
           <input value={birdSaleDraft.note} onChange={(e) => setBirdSaleDraft((s) => ({ ...s, note: e.target.value }))} placeholder="buyer (optional)" style={{ ...inpS, marginTop: 6 }} />
           <button onClick={addBirdSale} style={{ ...btn(C.harvest), marginTop: 6, width: "100%", justifyContent: "center" }}><Plus size={13} /> Add bird sale</button>
         </div>
-      </div>
+      </div>}
       <p style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>The full in/out summary — cost per egg, net, kept-egg value — lives in the Report (full view).</p>
 
       <div style={{ ...card }}>
