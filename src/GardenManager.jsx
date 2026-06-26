@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 92";
+const APP_BUILD = "2026-06-25 · build 93";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2556,7 +2556,7 @@ const bedPlantings = (bed) => bed.plantings || cellsToPlantings(bed, bedFineGrid
 const plantingRemoved = (p) => { const cs = p.cells || []; if (!cs.length) return p.removed || null;
   return cs.every((c) => c.removed) ? cs.map((c) => c.removed).sort().slice(-1)[0] : (p.removed || null); };
 // view a planting as a single crop record (so the old per-cell readers keep working)
-const plantingAsCell = (p) => ({ id: p.id, plant: p.plant, fam: p.fam, variety: p.variety, planted: p.planted, removed: plantingRemoved(p), ferts: p.ferts || [], notes: p.notes || "", sown: p.sown || null, doneTasks: p.doneTasks || [] });
+const plantingAsCell = (p) => ({ id: p.id, plant: p.plant, fam: p.fam, variety: p.variety, planted: p.planted, removed: plantingRemoved(p), ferts: p.ferts || [], notes: p.notes || "", sown: p.sown || null, doneTasks: p.doneTasks || [], noHarvest: p.noHarvest });
 
 function bedFamily(bed, viewDate) {
   const ps = bedPlantings(bed).map(plantingAsCell);
@@ -3945,10 +3945,10 @@ function ReportView({ data, setData, month, hemi, display }) {
       const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
       if (meta?.hmode === "months") { const sh = soonestHarvest(vrt?.hmon?.length ? vrt.hmon : meta.hmon);
-        if (active && sh && sh.dk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
+        if (active && !c.noHarvest && sh && sh.dk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
       else { const dd = vrt?.d || meta?.d;
         if (dd && c.planted) { const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
-          if (active && hk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days (${fmtDate(hISO)})` }); } }
+          if (active && !c.noHarvest && hk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days (${fmtDate(hISO)})` }); } }
       if (active) (meta?.tasks || []).forEach((t) => { if (dueSoon(t.months) && !(c.doneTasks || []).includes(`${t.name}|${curYM}`)) addJob({ what: `${t.name} — ${c.plant}`, where: `${b.name} · ${s.name}`, detail: monthsLabel(t.months) }); });
       (c.ferts || []).forEach((f) => pushLog(f, c.plant, `${b.name} · ${s.name}`));
     }));
@@ -3958,7 +3958,7 @@ function ReportView({ data, setData, month, hemi, display }) {
         (meta.tasks || []).forEach((t) => { if (dueSoon(t.months) && !(p.doneTasks || []).includes(`${t.name}|${curYM}`)) addJob({ what: `${t.name} — ${p.plant}`, where: s.name, detail: monthsLabel(t.months) }); });
         const vrt = (meta.varieties || []).find((v) => v.name === p.variety);
         const sh = soonestHarvest(vrt?.hmon?.length ? vrt.hmon : meta.hmon);
-        if (sh && sh.dk <= tk + 400) harvests.push({ plant: p.plant + (p.variety ? ` (${p.variety})` : ""), where: s.name, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
+        if (!p.noHarvest && sh && sh.dk <= tk + 400) harvests.push({ plant: p.plant + (p.variety ? ` (${p.variety})` : ""), where: s.name, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
       (p.ferts || []).forEach((f) => pushLog(f, p.plant, s.name));
     });
   });
