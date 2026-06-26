@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 91";
+const APP_BUILD = "2026-06-25 · build 92";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2363,6 +2363,10 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
       </Field>
 
       <Field icon={Apple} label="Est. harvest"><span style={{ fontSize: 13, color: C.ink }}>{harvest}</span></Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer", fontSize: 12.5, color: C.ink }}>
+        <input type="checkbox" checked={!item.noHarvest} onChange={(e) => patch({ noHarvest: e.target.checked ? undefined : true })} style={{ accentColor: C.fern, width: 16, height: 16, flexShrink: 0 }} />
+        <span>Remind me about harvests<div style={{ fontSize: 11, color: C.muted }}>Turn off for things you pick year-round (perennial herbs, silverbeet…).</div></span>
+      </label>
 
       {kind === "veg" && (
         <Field icon={Sprout} label="Planted in">
@@ -2609,12 +2613,12 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
       if (meta?.hmode === "months") {
         const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
-        if (active && (hmon.includes(month) || hmon.includes(nextMonth))) { const ready = hmon.includes(month);
+        if (active && !c.noHarvest && (hmon.includes(month) || hmon.includes(nextMonth))) { const ready = hmon.includes(month);
           harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: ready ? tk : tk + 30, label: ready ? "ready now" : `from ${MONTHS[nextMonth - 1]}`, go }); }
       } else { const dd = vrt?.d || meta?.d;
         if (dd && c.planted) {
           const hISO = addDays(c.planted, dd), hk = dayKey(new Date(hISO));
-          if (active && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
+          if (active && !c.noHarvest && hk <= tk + 45) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: hk, label: hk <= tk ? "ready now" : `~${hk - tk} days`, go });
         }
       }
       if (active) (meta?.tasks || []).forEach((t) => { if (soon(t.months) && !taskDone(c, t)) addCare({ icon: taskIcon(t.name), what: `${t.name} — ${c.plant}`, detail: monthsLabel(t.months), where: `${b.name} · ${s.name}`, due: t.months.includes(month), dueDk: t.months.includes(month) ? tk : firstNextMonthDk, go,
@@ -2626,7 +2630,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
         done: () => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id !== s.id ? x : { ...x, plants: (x.plants || []).map((pp) => pp.id !== p.id ? pp : { ...pp, doneTasks: [...(pp.doneTasks || []), `${t.name}|${curYM}`] }) }) })) }); });
       const vrt = (meta.varieties || []).find((v) => v.name === p.variety);
       const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
-      if (hmon.includes(month) || hmon.includes(nextMonth)) {
+      if (!p.noHarvest && (hmon.includes(month) || hmon.includes(nextMonth))) {
         const ready = hmon.includes(month);
         harvests.push({ plant: p.plant + (p.variety ? ` (${p.variety})` : ""), where: s.name, dk: ready ? tk : tk + 30, label: ready ? "ready now" : `from ${MONTHS[nextMonth - 1]}`, go });
       }
