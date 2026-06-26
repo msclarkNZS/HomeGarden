@@ -17,9 +17,9 @@ export default defineConfig({
         navigateFallback: "index.html",
       },
       manifest: {
-        name: "Glenbrook Garden Manager",
-        short_name: "Garden",
-        description: "Plan and track a home vegetable garden, orchard and berry patch.",
+        name: "Lifestyle Block Manager",
+        short_name: "Block",
+        description: "Plan and track a lifestyle block — garden, orchard, livestock and more.",
         theme_color: "#26412F",
         background_color: "#E9E5D7",
         display: "standalone",
