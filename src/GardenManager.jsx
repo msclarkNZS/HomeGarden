@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 98";
+const APP_BUILD = "2026-06-25 · build 99";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -778,7 +778,6 @@ export default function GardenManager() {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [showPlace, setShowPlace] = useState(false);
   const isPhone = useIsPhone();
-  const [viewOverride, setViewOverride] = useState(null); // session: "simple" | "full" | null
   const [stockFocus, setStockFocus] = useState(null);
   const now = new Date(); const month = now.getMonth() + 1;
   const place = data.place || DEFAULT_PLACE; const hemi = place.hemisphere;
@@ -905,9 +904,7 @@ export default function GardenManager() {
   const lib = useMemo(() => buildLibrary(data), [data.plantEdits, data.customPlants, data.place]);
 
   const hasStock = data.sections.some((s) => SECTION_KINDS[s.kind].uses === "stock");
-  const vm = viewOverride || data.viewMode || "auto";
-  const simple = vm === "simple" || (vm === "auto" && isPhone);
-  const FULL_TABS = [
+  const TABS = [
     { id: "map", label: "Property", icon: Map },
     { id: "harvest", label: "Gather & care", icon: Cherry },
     { id: "season", label: "Do now", icon: CalendarDays },
@@ -917,22 +914,11 @@ export default function GardenManager() {
     { id: "plants", label: "Library", icon: Sprout },
     { id: "report", label: "Report", icon: FileText },
   ];
-  const PHONE_TABS = [
-    { id: "harvest", label: "Gather & care", icon: Cherry },
-    { id: "season", label: "Do now", icon: CalendarDays },
-    ...(hasStock ? [{ id: "stock", label: "Animals", icon: Fence }] : []),
-    { id: "weather", label: "Weather", icon: CloudSun },
-  ];
-  const TABS = simple ? PHONE_TABS : FULL_TABS;
   useEffect(() => {
     if (!loaded) return;
     const ids = TABS.map((t) => t.id);
-    if (!ids.includes(tab)) {
-      if (simple) { const land = data.phoneLanding || "season"; setTab(ids.includes(land) ? land : ids[0]); }
-      else setTab("map");
-      setSel(null);
-    }
-  }, [simple, loaded, hasStock]);
+    if (!ids.includes(tab)) { setTab("map"); setSel(null); }
+  }, [loaded, hasStock]);
 
   if (!loaded) return <div style={{ fontFamily: body, background: C.bg, color: C.muted, minHeight: 480, display: "flex", alignItems: "center", justifyContent: "center" }}>Opening your block…</div>;
 
@@ -956,15 +942,12 @@ export default function GardenManager() {
         </div>}
       </header>
 
-      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", ...(simple ? { flexWrap: "wrap" } : { overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }) }}>
+      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", ...(isPhone ? { flexWrap: "wrap" } : { overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }) }}>
         {TABS.map((t) => { const on = tab === t.id; const Icon = t.icon; return (
           <button key={t.id} onClick={() => { setTab(t.id); setSel(null); }}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", cursor: "pointer", padding: "11px 14px", fontSize: 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flex: simple ? "1 1 auto" : "0 0 auto" }}>
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", cursor: "pointer", padding: "11px 14px", fontSize: 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flex: isPhone ? "1 1 auto" : "0 0 auto" }}>
             <Icon size={16} /> {t.label}
           </button>); })}
-        {isPhone && <button onClick={() => setViewOverride(simple ? "full" : "simple")} title={simple ? "Switch to full view" : "Switch to simple view"}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, border: "none", cursor: "pointer", padding: "11px 12px", fontSize: 12.5, fontWeight: 600, fontFamily: body, color: "#DfE6D8", background: "transparent", whiteSpace: "nowrap", flex: simple ? "1 1 auto" : "0 0 auto", ...(simple ? {} : { marginLeft: "auto" }) }}>
-          {simple ? <><Map size={15} /> Full view</> : <><CalendarDays size={15} /> Simple</>}</button>}
       </nav>
 
       <main style={{ padding: "18px clamp(12px, 4vw, 18px)" }}>
@@ -3469,19 +3452,6 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{place.lat.toFixed(3)}, {place.lon.toFixed(3)} · {place.hemisphere === "south" ? "Southern" : "Northern"} hemisphere</div>
         </div>
 
-        <label style={lbl}>View mode</label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["auto", "Auto (phone → simple)"], ["simple", "Always simple"], ["full", "Always full"]].map(([v, l]) => { const cur = (data.viewMode || "auto") === v; return (
-            <button key={v} onClick={() => setData((d) => ({ ...d, viewMode: v }))} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{l}</button>); })}
-        </div>
-        <p style={{ fontSize: 11.5, color: C.muted, margin: "5px 0 0", lineHeight: 1.5 }}>Simple view (for phones) shows just Harvest & care, Do now, Animals and Weather — the planning screens and maps stay on the computer. You can flip between them anytime with the Full / Simple button in the tab bar.</p>
-
-        <label style={lbl}>Phone opens on</label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[["harvest", "Gather & care"], ["season", "Do now"], ["stock", "Animals"]].map(([v, l]) => { const cur = (data.phoneLanding || "season") === v; return (
-            <button key={v} onClick={() => setData((d) => ({ ...d, phoneLanding: v }))} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{l}</button>); })}
-        </div>
-
         <label style={lbl}>Search for a place</label>
         <div style={{ display: "flex", gap: 6 }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="Town, city or suburb…" style={inp} />
@@ -4177,12 +4147,6 @@ function ReportView({ data, setData, month, hemi, display }) {
         </StatCard>}
 
       </div>
-
-      {totalBeds > 0 && <div style={{ ...card, background: "#fff", marginTop: 14 }}>
-        <H>Crop rotation — plant next</H>
-        {bedSecs.map((s) => (s.beds || []).map((b) => { const fam = bedFamily(b, today);
-          return <div key={b.id} style={row}>• <strong>{b.name}</strong> ({s.name}): last {fam ? FAMILIES[fam].label : "nothing"} → <strong style={{ color: C.fern }}>{GROUP_LABEL[rotationNextGroup(fam)]}</strong></div>; }))}
-      </div>}
     </div>
   );
 }
