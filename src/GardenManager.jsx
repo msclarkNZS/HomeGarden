@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 95";
+const APP_BUILD = "2026-06-25 · build 96";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1715,6 +1715,7 @@ function AreaStock({ data, setData, section, display }) {
   const [openAnimal, setOpenAnimal] = useState(null);
   const [aLog, setALog] = useState({ type: "health", what: "", qty: "", date: todayISO() });
   const [bulkN, setBulkN] = useState("1");
+  const [planOpen, setPlanOpen] = useState(false);
   const [clutch, setClutch] = useState({ open: false, n: "2", klass: "", damId: "", sireId: "", born: todayISO() });
   const animalPanelRef = useRef(null);
   const choices = speciesFor(section.kind);
@@ -1751,6 +1752,10 @@ function AreaStock({ data, setData, section, display }) {
       if (animalId) return { ...m, individuals: (m.individuals || []).map((a) => a.id !== animalId ? a : { ...a, ferts: [...(a.ferts || []), e] }) };
       return { ...m, ferts: [...(m.ferts || []), e] }; }) }) }));
     reset && reset(); };
+  const performTask = (mob, t) => { const date = todayISO();
+    setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mob.id ? m : { ...m, ferts: [...(m.ferts || []), { id: uid(), date, type: "task", task: t.name, what: t.name }] }) }),
+      ...(t.mode === "calendar" ? { stockDone: { ...(d.stockDone || {}), [`${mob.species}|${t.name}|${todayISO().slice(0, 7)}`]: true } } : {}) }));
+    setPlanOpen(false); };
   const removeEntry = (mobId, animalId, id) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
       if (m.id !== mobId) return m;
       if (animalId) return { ...m, individuals: (m.individuals || []).map((a) => a.id !== animalId ? a : { ...a, ferts: (a.ferts || []).filter((f) => f.id !== id) }) };
@@ -1959,6 +1964,29 @@ function AreaStock({ data, setData, section, display }) {
                       <button onClick={() => STOCK_LOG[logType]?.product ? pushEntry(m.id, null, logType, "", log.qty, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date) : (m.individuals || []).length && applyMobTreatment(m.id, logType, log.what, () => setLog((s) => ({ ...s, what: "", qty: "" })), log.date)} style={btn(C.fern)}><Plus size={14} /></button>
                     </div>
                     {!STOCK_LOG[logType]?.product && (m.individuals || []).length === 0 && <p style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>Add animals first — treatments apply to the mob's animals.</p>}
+
+                    {(() => { const tasks = (buildStock(data)[m.species]?.tasks) || []; if (!tasks.length) return null;
+                      return (<div style={{ marginTop: 10 }}>
+                        <button onClick={() => setPlanOpen((v) => !v)} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><Check size={14} /> {planOpen ? "Hide planned jobs" : "Perform planned job"}</button>
+                        {planOpen && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {tasks.map((t) => { const st = t.mode === "interval" ? intervalStatus(m, t) : null;
+                            const status = t.mode === "interval"
+                              ? (st?.never ? "never done" : st?.due ? (st.overdue > 0 ? `overdue ${st.overdue}d` : "due now") : `in ${st.dueIn}d`)
+                              : ((t.months || []).includes(new Date().getMonth() + 1) ? "in season" : "scheduled");
+                            const isDue = t.mode === "interval" ? (st?.due || st?.never) : (t.months || []).includes(new Date().getMonth() + 1);
+                            const lastISO = t.mode === "interval" ? st?.last : null;
+                            return (
+                            <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: `1px solid ${C.line}`, borderRadius: 8, background: C.panel2 }}>
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.ink }}>{t.name}</span>
+                                <span style={{ fontSize: 11, color: isDue ? C.harvest : C.muted, marginLeft: 6 }}>{status}</span>
+                                {lastISO && <div style={{ fontSize: 10.5, color: C.muted }}>last {fmtDate(lastISO)}</div>}
+                              </span>
+                              <button onClick={() => performTask(m, t)} style={{ ...chip, cursor: "pointer", padding: "5px 11px", background: C.fern, color: "#fff", border: "none", flexShrink: 0 }}><Check size={11} style={{ verticalAlign: -1 }} /> Done today</button>
+                            </div>); })}
+                          <p style={{ fontSize: 10.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>Logs the job against this mob with today's date. Interval jobs reset their countdown; the matching reminder in “Do now” clears.</p>
+                        </div>}
+                      </div>); })()}
                     </>}
 
                     <label style={lblS}>Move whole mob to</label>
