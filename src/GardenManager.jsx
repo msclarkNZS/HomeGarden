@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 96";
+const APP_BUILD = "2026-06-25 · build 97";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1890,10 +1890,6 @@ function AreaStock({ data, setData, section, display }) {
 
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0 6px" }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, color: C.muted }}>ANIMALS ({(m.individuals || []).length})</span>
-                      <span style={{ display: "flex", gap: 6 }}>
-                        {m.species === "chicken" && <button onClick={() => addChick(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.harvest, color: "#fff", border: "none" }}>🐣 chick</button>}
-                        <button onClick={() => addIndividual(m.id)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> Add one</button>
-                      </span>
                     </div>
                     {(m.individuals || []).length === 0 && <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 6px" }}>No animals yet — add some below.</p>}
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1908,9 +1904,9 @@ function AreaStock({ data, setData, section, display }) {
                         </button>); })}
                     </div>
                     <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <span style={{ fontSize: 11.5, color: C.muted }}>Add several:</span>
+                      <span style={{ fontSize: 11.5, color: C.muted }}>Add:</span>
                       <input type="number" min="1" value={bulkN} onChange={(e) => setBulkN(e.target.value)} style={{ ...inpS, width: 56 }} />
-                      <button onClick={() => addIndividuals(m.id, bulkN)} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: C.fern, color: "#fff", border: "none" }}>+ add</button>
+                      <button onClick={() => addIndividuals(m.id, bulkN)} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: C.fern, color: "#fff", border: "none" }}><Plus size={11} style={{ verticalAlign: -1 }} /> add</button>
                       <button onClick={() => setClutch((c) => ({ ...c, open: !c.open, klass: c.klass || (m.species === "chicken" ? "Chick" : (SPECIES[m.species]?.classes?.[0] || m.klass)), born: todayISO() }))} style={{ ...chip, cursor: "pointer", padding: "5px 12px", background: clutch.open ? C.fernDk : C.harvest, color: "#fff", border: "none" }}>{m.species === "chicken" ? "🐣" : "👶"} {clutch.open ? "close" : `add ${youngLabel(m.species)} (same parents)`}</button>
                     </div>
                     {clutch.open && (() => {
