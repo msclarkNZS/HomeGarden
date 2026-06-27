@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 99";
+const APP_BUILD = "2026-06-25 · build 100";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -4007,10 +4007,10 @@ function ReportView({ data, setData, month, hemi, display }) {
   const inWin = (x) => { const k = dayKey(new Date(x.date)); return k >= winFrom && k <= winTo; };
   allMobs.forEach((m) => eachEntry(m, (f) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
     if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
-    if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${mobHead(m)} ${m.klass}${m.name ? " · " + m.name : ""}`, sp: stockLib[m.species]?.label }); }));
+    if (["health", "drench", "shear", "weight", "birth", "death", "task"].includes(f.type)) treatments.push({ ...f, mob: `${mobHead(m)} ${m.klass}${m.name ? " · " + m.name : ""}`, sp: stockLib[m.species]?.label }); }));
   (data.archive || []).forEach((rec) => (rec.ferts || []).forEach((f) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
     if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
-    if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${rec.klass} · ${rec.name} (archived)`, sp: stockLib[rec.species]?.label }); }));
+    if (["health", "drench", "shear", "weight", "birth", "death", "task"].includes(f.type)) treatments.push({ ...f, mob: `${rec.klass} · ${rec.name} (archived)`, sp: stockLib[rec.species]?.label }); }));
   treatments.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
   let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
@@ -4128,7 +4128,7 @@ function ReportView({ data, setData, month, hemi, display }) {
           {Object.keys(products).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
             {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}</>}
           {treatList.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Treatments &amp; events · {windowLabel}</div>
-            {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label}{t.what ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
+            {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon || (t.type === "task" ? "✅" : "•")} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label || (t.type === "task" ? "Planned job" : t.type)}{t.what && t.what !== STOCK_LOG[t.type]?.label ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
           {(data.archive || []).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Past animals</div>
             {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : "❌ died"} {fmtDate(a.archived)}</div>)}</>}
         </StatCard>}
