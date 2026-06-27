@@ -1,9 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#26412F"/>
-  <g transform="translate(256,256) rotate(45) translate(-256,-256)">
-    <path d="M256 96 C150 150 150 362 256 416 C362 362 362 150 256 96 Z" fill="#AFC2A4"/>
-    <path d="M256 116 L256 396" stroke="#26412F" stroke-width="14" stroke-linecap="round"/>
-    <path d="M256 196 L196 156 M256 256 L186 216 M256 256 L326 216 M256 316 L206 286 M256 316 L306 286 M256 196 L316 156"
-          stroke="#33503F" stroke-width="10" stroke-linecap="round" fill="none"/>
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><rect width="512" height="512" rx="112" fill="#26412F"/>
+  <g transform="translate(86 86)">
+    <rect x="0" y="0" width="160" height="160" rx="22" fill="#7C9A78"/>
+    <g stroke="#26412F" stroke-width="9" opacity=".35" stroke-linecap="round"><line x1="26" y1="46" x2="134" y2="46"/><line x1="26" y1="82" x2="134" y2="82"/><line x1="26" y1="118" x2="134" y2="118"/></g>
+    <rect x="180" y="0" width="160" height="160" rx="22" fill="#AFC2A4"/>
+    <g transform="translate(180 0)" fill="#26412F">
+      <path d="M24 58 q-26 8 -17 40 q17 -10 33 -16 Z"/>
+      <ellipse cx="80" cy="88" rx="48" ry="34"/>
+      <circle cx="114" cy="58" r="20"/>
+      <path d="M104 40 q5 -10 10 -1 q5 -10 10 -1 q4 -8 8 2 q-15 4 -28 2 Z" fill="#9B3B4E"/>
+      <path d="M132 56 l20 -3 -18 13 Z" fill="#C2772E"/>
+      <circle cx="120" cy="54" r="3.4" fill="#EDE8D8"/>
+      <rect x="68" y="120" width="6" height="22" rx="3" fill="#5b4630"/>
+      <rect x="94" y="120" width="6" height="22" rx="3" fill="#5b4630"/>
+    </g>
+    <rect x="0" y="180" width="160" height="160" rx="22" fill="#8A6A4C"/>
+    <rect x="70" y="244" width="12" height="64" rx="4" fill="#5b4630"/>
+    <circle cx="76" cy="240" r="44" fill="#33503F"/>
+    <rect x="180" y="180" width="160" height="160" rx="22" fill="#C2772E"/>
+    <g stroke="#26412F" stroke-width="9" opacity=".22" stroke-linecap="round"><line x1="206" y1="226" x2="314" y2="226"/><line x1="206" y1="262" x2="314" y2="262"/><line x1="206" y1="298" x2="314" y2="298"/></g>
   </g>
 </svg>
