@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 97";
+const APP_BUILD = "2026-06-25 · build 98";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -886,6 +886,11 @@ export default function GardenManager() {
     const l = document.createElement("link"); l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Public+Sans:wght@400;500;600&display=swap";
     document.head.appendChild(l); return () => document.head.removeChild(l);
+  }, []);
+  useEffect(() => {
+    const st = document.createElement("style");
+    st.textContent = "@media print { .report-toggles { display: none !important; } }";
+    document.head.appendChild(st); return () => document.head.removeChild(st);
   }, []);
   useEffect(() => {
     let m = document.querySelector("meta[name=viewport]"); const prev = m ? m.getAttribute("content") : null;
@@ -4016,25 +4021,63 @@ function ReportView({ data, setData, month, hemi, display }) {
   const totalBeds = bedSecs.reduce((n, s) => n + (s.beds || []).length, 0);
   const totalPlants = plantSecs.reduce((n, s) => n + (s.plants || []).length, 0);
 
+  // ---- what's growing now (for dashboard) ----
+  const growingBeds = []; bedSecs.forEach((s) => (s.beds || []).forEach((b) => { const cells = bedPlantings(b).map(plantingAsCell).filter((c) => visibleAt(c, today)); if (cells.length) { const counts = {}; cells.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; }); growingBeds.push({ where: `${b.name} · ${s.name}`, counts }); } }));
+  const growingPlantSecs = []; plantSecs.forEach((s) => { if ((s.plants || []).length) growingPlantSecs.push({ where: s.name, names: [...new Set((s.plants || []).map((p) => p.plant))] }); });
+  const growingCount = new Set([...growingBeds.flatMap((g) => Object.keys(g.counts)), ...growingPlantSecs.flatMap((g) => g.names)]).size;
+  const topCrops = Object.entries(harvestByCrop).sort((a, b) => b[1].count - a[1].count).slice(0, 3).map(([c]) => c);
+
+  // ---- livestock + eggs aggregates (for dashboard) ----
+  const stockLib = buildStock(data);
+  const allMobs = data.sections.flatMap((s) => (s.mobs || []).map((m) => ({ ...m, area: s.name })));
+  const bySpeciesStock = {}; allMobs.forEach((m) => { (bySpeciesStock[m.species] = bySpeciesStock[m.species] || []).push(m); });
+  const totalHead = allMobs.reduce((n, m) => n + mobHead(m), 0);
+  const products = {}; const treatments = [];
+  const eachEntry = (m, cb) => { (m.ferts || []).forEach((f) => cb(f, null)); (m.individuals || []).forEach((a) => (a.ferts || []).forEach((f) => cb(f, a.name))); };
+  const inWin = (x) => { const k = dayKey(new Date(x.date)); return k >= winFrom && k <= winTo; };
+  allMobs.forEach((m) => eachEntry(m, (f) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
+    if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
+    if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${mobHead(m)} ${m.klass}${m.name ? " · " + m.name : ""}`, sp: stockLib[m.species]?.label }); }));
+  (data.archive || []).forEach((rec) => (rec.ferts || []).forEach((f) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
+    if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
+    if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${rec.klass} · ${rec.name} (archived)`, sp: stockLib[rec.species]?.label }); }));
+  treatments.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
+  let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
+  const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin); const buysW = (data.eggLedger?.purchases || []).filter(inWin); const birdSalesW = (data.eggLedger?.birdSales || []).filter(inWin);
+  const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
+  const birdCost = buysW.reduce((n, x) => n + (x.cost || 0), 0); const birdsBought = buysW.reduce((n, x) => n + (x.birds || 0), 0);
+  const birdRevenue = birdSalesW.reduce((n, x) => n + (x.amount || 0), 0); const birdsSold = birdSalesW.reduce((n, x) => n + (x.birds || 0), 0);
+  const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
+  const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
+  const totalIn = revenue + birdRevenue; const totalOut = feedCost + birdCost; const net = totalIn - totalOut;
+  const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length || birdSalesW.length;
+  const hasStock = allMobs.length > 0 || (data.archive || []).length > 0;
+  const eggByDay = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggByDay[k] = (eggByDay[k] || 0) + (Number(f.qty) || 0); } }); });
+  const eggDays = (() => { const ks = Object.keys(eggByDay).map(Number); if (!ks.length) return []; let lo = Math.min(...ks), hi = Math.max(...ks); if (hi - lo > 120) lo = hi - 120; const out = []; for (let k = lo; k <= hi; k++) out.push({ k, eggs: eggByDay[k] || 0 }); return out; })();
+  const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  const [openCard, setOpenCard] = useState(null);
+  const [allOpen, setAllOpen] = useState(false);
+  const cardOpen = (id) => allOpen || openCard === id;
+
   const H = ({ children }) => <h3 style={{ fontFamily: display, fontSize: 16.5, color: C.fernDk, margin: "18px 0 7px", borderBottom: `1px solid ${C.line}`, paddingBottom: 4 }}>{children}</h3>;
   const row = { fontSize: 13, color: C.ink, padding: "3px 0", lineHeight: 1.5 };
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
-        <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>{reportMode === "crop" ? "Crop history" : reportMode === "stock" ? "Livestock report" : "Garden report"}</h2>
-        <button onClick={() => window.print()} style={btn(C.soil)}><Printer size={15} /> Print / Save PDF</button>
-      </div>
-      <div className="report-toggles" style={{ display: "flex", gap: 7, marginBottom: 12, flexWrap: "wrap" }}>
-        {[["garden", "Garden report"], ["crop", "Crop history"], ...(data.sections.some((s) => (s.mobs || []).length) || (data.archive || []).length ? [["stock", "Livestock"]] : [])].map(([m, lab]) => { const cur = reportMode === m; return (
-          <button key={m} onClick={() => setReportMode(m)} style={{ ...chip, cursor: "pointer", padding: "7px 14px", fontSize: 13, background: cur ? C.fernDk : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fernDk : C.line}` }}>{lab}</button>); })}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <h2 style={{ ...h2(display), margin: 0 }}>{data.propertyName}</h2>
+          <div style={{ fontSize: 12.5, color: C.muted }}>{data.place?.name || ""}{data.place?.region ? `, ${data.place.region}` : ""} · {season} · {windowLabel}</div>
+        </div>
+        <button onClick={() => { setAllOpen(true); setTimeout(() => window.print(), 60); }} style={btn(C.soil)}><Printer size={15} /> Print / PDF</button>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 10 }} className="report-toggles">
-        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Time window:</span>
-        {HORIZONS.map(([label, d]) => (
-          <button key={d} onClick={() => setMode(d)} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: !custom && mode === d ? C.soil : C.panel2, color: !custom && mode === d ? "#fff" : C.muted, border: `1px solid ${!custom && mode === d ? C.soil : C.line}` }}>{label}</button>))}
-        <button onClick={() => setMode("custom")} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: custom ? C.soil : C.panel2, color: custom ? "#fff" : C.muted, border: `1px solid ${custom ? C.soil : C.line}` }}>Custom</button>
+      <div className="report-toggles" style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
+        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Period:</span>
+        {HORIZONS.map(([label, d]) => <button key={d} onClick={() => setMode(d)} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: !custom && mode === d ? C.fernDk : C.panel2, color: !custom && mode === d ? "#fff" : C.muted, border: `1px solid ${!custom && mode === d ? C.fernDk : C.line}` }}>{label}</button>)}
+        <button onClick={() => setMode("custom")} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: custom ? C.fernDk : C.panel2, color: custom ? "#fff" : C.muted, border: `1px solid ${custom ? C.fernDk : C.line}` }}>Custom</button>
         {custom && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
           <input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
           <span style={{ color: C.muted, fontSize: 12 }}>to</span>
@@ -4042,209 +4085,126 @@ function ReportView({ data, setData, month, hemi, display }) {
         </span>}
       </div>
 
-      {reportMode === "garden" && <>
-      <p style={{ color: C.muted, fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>Pick an area and tick what to include, then print or save as PDF.</p>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 10 }} className="report-toggles">
-        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Report on:</span>
-        <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 9px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
+      <div className="report-toggles" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: C.muted }}>Area:</span>
+        <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 8px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
           <option value="all">Whole property</option>
           {data.sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-      </div>
-      <div className="report-toggles" style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-        {OPTIONS.map(([k, label]) => (
-          <button key={k} onClick={() => toggle(k)} style={{ ...chip, cursor: "pointer", padding: "6px 11px", background: on[k] ? C.fern : C.panel2, color: on[k] ? "#fff" : C.muted, border: `1px solid ${on[k] ? C.fern : C.line}` }}>
-            {on[k] ? <Check size={12} style={{ marginRight: 4, verticalAlign: -1 }} /> : null}{label}
-          </button>))}
-      </div>
-      </>}
-
-      {reportMode === "crop" && <>
-      <p style={{ color: C.muted, fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>Pick a crop to see everything you've picked from it — totals, timing and a month-by-month chart.</p>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 10 }} className="report-toggles">
-        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Crop:</span>
-        <select value={focus} onChange={(e) => setCropFocus(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 9px", fontSize: 13, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
-          <option value="">— pick a crop —</option>
-          {cropList.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        {cropList.length === 0 && <span style={{ fontSize: 12, color: C.muted }}>Plant something first, then pick it here to chart its harvest.</span>}
+        <span style={{ flex: 1 }} />
+        <button onClick={() => { setAllOpen(!allOpen); setOpenCard(null); }} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: allOpen ? C.fern : C.panel2, color: allOpen ? "#fff" : C.muted, border: `1px solid ${allOpen ? C.fern : C.line}` }}>{allOpen ? "Collapse all" : "Expand all"}</button>
       </div>
 
-      {focus ? (
-        <div style={{ ...card, background: "#fff", marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontFamily: display, fontSize: 18, color: C.fernDk }}>{focus} — harvest history</strong>
-            <span style={{ fontSize: 12, color: C.muted }}>{windowLabel}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, alignItems: "start" }}>
+
+        {hasChooks && <StatCard icon="🥚" label={`Eggs · ${windowLabel}`} value={eggsLaid} accent={C.harvest}
+          sub={`${eggsSold} sold · ${eggsKept} kept${costPerEgg != null ? ` · ~${money(costPerEgg)}/egg` : ""}`}
+          expandable open={cardOpen("eggs")} onToggle={() => setOpenCard(openCard === "eggs" ? null : "eggs")}>
+          {eggDays.length > 1 ? <><EggChart days={eggDays} />
+            <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
+              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> eggs/day</span>
+              <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> 7-day avg</span>
+            </div></> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Log daily collections in Gather &amp; care to see the trend here.</p>}
+          {costPerEgg != null && <div style={{ ...row, marginTop: 8 }}>Running cost per egg <strong>{money(costPerEgg)}</strong> · ~{money(costPerEgg * 12)}/dozen. The {eggsKept} you kept cost about <strong>{money(keptCost)}</strong>.</div>}
+        </StatCard>}
+
+        <StatCard icon="🧺" label={`Harvests · ${windowLabel}`} value={harvestBack.length} accent={C.harvest}
+          sub={harvestBack.length ? (topCrops.length ? `Top: ${topCrops.join(", ")}` : `across ${Object.keys(harvestByCrop).length} crops`) : "nothing logged yet"}
+          expandable open={cardOpen("harvest")} onToggle={() => setOpenCard(openCard === "harvest" ? null : "harvest")}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Chart a crop:</span>
+            <select value={focus} onChange={(e) => setCropFocus(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 8px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
+              <option value="">—</option>
+              {cropList.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {focus && bars.length > 0 && <span style={{ display: "inline-flex", gap: 4 }}>{[["week", "W"], ["month", "M"], ["year", "Y"]].map(([g, lab]) => { const cur = gran === g; return <button key={g} onClick={() => setGran(g)} style={{ ...chip, cursor: "pointer", padding: "2px 8px", fontSize: 11, background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>; })}</span>}
           </div>
-          {focusStats && <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.5, marginTop: 4 }}>
-            {(() => { const sown = cropSownTotals(data, focus); return sown ? <>🌱 Planted in total: <strong>{sown}</strong>. </> : null; })()}
-            {focusStats.totalLabel ? <>🧺 Harvested (all time): <strong style={{ color: C.harvest }}>{focusStats.totalLabel}</strong> over {focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"}. </> : <>{focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"} logged. </>}
-            {focusStats.avgFirst != null && <>First pick ≈{focusStats.avgFirst} days after planting. </>}
-            {focusStats.last && <>Most recent: {fmtDate(focusStats.last)}.</>}
-          </div>}
-          {bars.length > 0 ? <>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-              <span style={{ fontSize: 11, color: C.muted }}>By</span>
-              {[["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].map(([g, lab]) => { const cur = gran === g; return (
-                <button key={g} onClick={() => setGran(g)} style={{ ...chip, cursor: "pointer", padding: "3px 9px", fontSize: 11.5, background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>); })}
-              <span style={{ fontSize: 11, color: C.muted }}>· {chartUnit || "picks"}</span>
-            </div>
-            <BarChart bars={bars} color={C.harvest} suffix={chartUnit ? ` ${chartUnit}` : ""} /></>
-            : <p style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>No harvests in this window. Log picks from a garden's “Log harvest” button, or a plant's Journal.</p>}
-          {focusEntries.length > 0 && <>
-            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 12, marginBottom: 4, fontWeight: 600 }}>Picks logged</div>
-            {[...focusEntries].reverse().slice(0, 40).map((h, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(h.date)} — {h.qty != null ? `${h.qty} ${h.unit}` : "picked"}{h.what ? ` — ${h.what}` : ""} <span style={{ color: C.muted }}>({h.where})</span></div>)}
-          </>}
-        </div>
-      ) : <div style={{ ...card, background: "#fff", color: C.muted, fontSize: 13 }}>Choose a crop above to see its history.</div>}
-      </>}
-
-      {reportMode === "stock" && (() => {
-        const stockLib = buildStock(data);
-        const allMobs = data.sections.flatMap((s) => (s.mobs || []).map((m) => ({ ...m, area: s.name })));
-        const bySpecies = {}; allMobs.forEach((m) => { (bySpecies[m.species] = bySpecies[m.species] || []).push(m); });
-        const totalHead = allMobs.reduce((n, m) => n + mobHead(m), 0);
-        const products = {}; const treatments = [];
-        const eachEntry = (m, cb) => { (m.ferts || []).forEach((f) => cb(f, null)); (m.individuals || []).forEach((a) => (a.ferts || []).forEach((f) => cb(f, a.name))); };
-        allMobs.forEach((m) => eachEntry(m, (f, who) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
-          if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
-          if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${mobHead(m)} ${m.klass}${m.name ? " · " + m.name : ""}${who && !f.batch ? " › " + who : ""}`, sp: stockLib[m.species]?.label }); }));
-        (data.archive || []).forEach((rec) => (rec.ferts || []).forEach((f) => { const k = dayKey(new Date(f.date)); if (k < winFrom || k > winTo) return;
-          if (STOCK_LOG[f.type]?.product && f.qty != null) { const key = `${f.type}|${f.unit || ""}`; products[key] = Math.round(((products[key] || 0) + f.qty) * 100) / 100; }
-          if (["health", "drench", "shear", "weight", "birth", "death"].includes(f.type)) treatments.push({ ...f, mob: `${rec.klass} · ${rec.name} (archived)`, sp: stockLib[rec.species]?.label }); }));
-        treatments.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-        const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
-        let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
-        const inWin = (x) => { const k = dayKey(new Date(x.date)); return k >= winFrom && k <= winTo; };
-        const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin); const buysW = (data.eggLedger?.purchases || []).filter(inWin); const birdSalesW = (data.eggLedger?.birdSales || []).filter(inWin);
-        const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
-        const birdCost = buysW.reduce((n, x) => n + (x.cost || 0), 0); const birdsBought = buysW.reduce((n, x) => n + (x.birds || 0), 0);
-        const birdRevenue = birdSalesW.reduce((n, x) => n + (x.amount || 0), 0); const birdsSold = birdSalesW.reduce((n, x) => n + (x.birds || 0), 0);
-        const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
-        const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
-        const totalIn = revenue + birdRevenue; const totalOut = feedCost + birdCost; const net = totalIn - totalOut;
-        const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length || birdSalesW.length;
-        const eggByDay = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggByDay[k] = (eggByDay[k] || 0) + (Number(f.qty) || 0); } }); });
-        const eggDays = (() => { const ks = Object.keys(eggByDay).map(Number); if (!ks.length) return [];
-          let lo = Math.min(...ks), hi = Math.max(...ks); if (hi - lo > 120) lo = hi - 120;
-          const out = []; for (let k = lo; k <= hi; k++) out.push({ k, eggs: eggByDay[k] || 0 }); return out; })();
-        const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-        return (
-          <div style={{ ...card, background: "#fff" }}>
-            <div style={{ fontFamily: display, fontSize: 21, fontWeight: 600, color: C.fernDk }}>{data.propertyName} — livestock</div>
-            <div style={{ fontSize: 12.5, color: C.muted }}>{data.place?.name || ""} · {fmtDate(today.toISOString().slice(0, 10))} · products over {windowLabel}</div>
-
-            <H>Stock on hand</H>
-            {allMobs.length ? <>
-              <div style={row}><strong>{totalHead} head</strong> across {allMobs.length} mob{allMobs.length === 1 ? "" : "s"}</div>
-              {Object.entries(bySpecies).map(([sp, ms]) => { const head = ms.reduce((n, m) => n + mobHead(m), 0);
-                return <div key={sp} style={row}>{stockLib[sp]?.emoji} <strong>{stockLib[sp]?.label}</strong>: {head} head — {ms.map((m) => `${mobHead(m)} ${m.klass} (${m.area})`).join(", ")}</div>; })}
-            </> : <div style={{ ...row, color: C.muted }}>No stock recorded.</div>}
-
-            <H>Products ({windowLabel})</H>
-            {Object.keys(products).length ? Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|");
-              return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })
-              : <div style={{ ...row, color: C.muted }}>No products logged in this window. Log eggs, wool, milk or meat from a mob's journal.</div>}
-
-            {hasChooks && <>
-              <H>Eggs — in & out ({windowLabel})</H>
-              <div style={row}>🥚 <strong>{eggsLaid}</strong> laid · 🏷️ {eggsSold} sold · 🏡 {eggsKept} kept (eaten/spare)</div>
-              {eggDays.length > 1 && <div style={{ margin: "6px 0 2px" }}>
-                <EggChart days={eggDays} />
-                <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
-                  <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2, verticalAlign: 0 }} /> eggs per day</span>
-                  <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> 7-day average</span>
-                </div>
-              </div>}
-              <div style={row}>💰 In <strong>{money(totalIn)}</strong>{birdRevenue ? <span style={{ color: C.muted, fontSize: 12.5 }}> (eggs {money(revenue)} · birds {money(birdRevenue)})</span> : null} · 💸 Out <strong>{money(totalOut)}</strong>{birdCost ? <span style={{ color: C.muted, fontSize: 12.5 }}> (feed {money(feedCost)} · birds {money(birdCost)})</span> : null} · Net <strong style={{ color: net >= 0 ? C.fern : C.beet }}>{money(net)}</strong></div>
-              {(birdsBought > 0 || birdsSold > 0) && <div style={{ ...row, fontSize: 12.5, color: C.muted }}>{birdsBought > 0 ? `${birdsBought} bird${birdsBought === 1 ? "" : "s"} bought` : ""}{birdsBought > 0 && birdsSold > 0 ? " · " : ""}{birdsSold > 0 ? `${birdsSold} sold` : ""} in this window — in costs &amp; net; the running cost-per-egg below uses feed only.</div>}
-              {costPerEgg != null ? <>
-                <div style={row}>Running cost per egg: <strong>{money(costPerEgg)}</strong> · about {money(costPerEgg * 12)}/dozen</div>
-                <div style={row}>The {eggsKept} egg{eggsKept === 1 ? "" : "s"} you kept cost about <strong>{money(keptCost)}</strong> to produce ({eggsKept} × {money(costPerEgg)})</div>
-              </> : <div style={{ ...row, color: C.muted }}>Log feed purchases and eggs laid (from the Gather tab) to see a running cost per egg.</div>}
-
-              {ledgerRows.length > 0 && <>
-                <div style={{ ...row, color: C.muted, marginTop: 8 }}>Entries in this window <span style={{ fontSize: 11 }}>(add new ones from the Gather tab):</span></div>
-                {ledgerRows.slice(0, 40).map((x) => (
-                  <div key={x.kind + x.id} style={{ ...row, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : x.kind === "purchases" ? `🐔 Bought ${x.birds || 0} bird${x.birds === 1 ? "" : "s"} ${money(x.cost)}` : x.kind === "birdSales" ? `🐓 Sold ${x.birds || 0} bird${x.birds === 1 ? "" : "s"} ${money(x.amount)}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
-                    <button onClick={() => removeLedger(x.kind, x.id)} style={iconBtn}><Trash2 size={12} /></button>
-                  </div>))}
-              </>}
-            </>}
-
-            <H>Treatments & events ({windowLabel})</H>
-            {treatList.length ? treatList.slice(0, 50).map((t, i) => (
-              <div key={i} style={row}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label}{t.what ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>))
-              : <div style={{ ...row, color: C.muted }}>No health or husbandry events in this window.</div>}
-
-            {(data.archive || []).length > 0 && <>
-              <H>Past animals (archived)</H>
-              {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).map((a, i) => (
-                <div key={i} style={row}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : "❌ died"} {fmtDate(a.archived)}{a.fromMob ? ` · was ${a.fromMob}` : ""}{(a.ferts || []).length ? ` · ${a.ferts.length} log${a.ferts.length === 1 ? "" : "s"}` : ""}</div>))}
-            </>}
-          </div>);
-      })()}
-
-      {reportMode === "garden" && (
-      <div style={{ ...card, background: "#fff" }}>
-        <div style={{ fontFamily: display, fontSize: 21, fontWeight: 600, color: C.fernDk }}>{data.propertyName}</div>
-        <div style={{ fontSize: 12.5, color: C.muted }}>{data.place?.name}{data.place?.region ? `, ${data.place.region}` : ""} · {season} · {fmtDate(today.toISOString().slice(0,10))} · {scopeName}</div>
-
-        {on.glance && <><H>Garden at a glance</H>
-          <div style={row}>{sections.length} section{sections.length === 1 ? "" : "s"} · {totalBeds} vegetable bed{totalBeds === 1 ? "" : "s"} · {totalPlants} tree{totalPlants === 1 ? "" : "s"} & bushes</div>
-          {sections.map((s) => { const k = SECTION_KINDS[s.kind];
-            return <div key={s.id} style={row}>• <strong>{s.name}</strong> ({k.label}) — {sectionCountLabel(s).text}</div>; })}
-        </>}
-
-        {on.growing && <><H>What's growing now</H>
-          {bedSecs.every((s) => (s.beds || []).every((b) => !bedPlantings(b).map(plantingAsCell).some((c) => visibleAt(c, today)))) && plantSecs.every((s) => (s.plants || []).length === 0) && <div style={{ ...row, color: C.muted }}>Nothing recorded yet.</div>}
-          {bedSecs.map((s) => (s.beds || []).map((b) => { const cells = bedPlantings(b).map(plantingAsCell).filter((c) => visibleAt(c, today)); if (!cells.length) return null;
-            const counts = {}; cells.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; });
-            return <div key={b.id} style={row}>• <strong>{b.name}</strong> ({s.name}): {Object.entries(counts).map(([n, q]) => `${n}${q > 1 ? ` ×${q}` : ""}`).join(", ")}</div>; }))}
-          {plantSecs.map((s) => (s.plants || []).length ? <div key={s.id} style={row}>• <strong>{s.name}</strong>: {[...new Set((s.plants || []).map((p) => p.plant))].join(", ")}</div> : null)}
-        </>}
-
-        {on.jobs && <><H>Jobs due {wideHorizon ? "(this & next month)" : "this month"}</H>
-          {jobs.length ? jobs.map((t, i) => <div key={i} style={row}>• <strong>{t.what}</strong> ({t.where}){t.detail ? ` — ${t.detail}` : ""}</div>) : <div style={{ ...row, color: C.muted }}>No scheduled tasks due — anything logged this month is hidden.</div>}
-        </>}
-
-        {on.harvests && <><H>Upcoming harvests ({custom ? "to " + fmtDate(cTo) : mode >= 99999 ? "ahead" : "next " + windowLabel.toLowerCase()})</H>
-          {harvestsIn.length ? harvestsIn.map((h, i) => <div key={i} style={row}>• <strong>{h.plant}</strong> — {h.label} · {h.where}</div>) : <div style={{ ...row, color: C.muted }}>None estimated in this window.</div>}
-        </>}
-
-        {on.harvestlog && <><H>Harvest journal ({custom ? windowLabel : mode >= 99999 ? "all time" : "last " + windowLabel.toLowerCase()})</H>
+          {focus ? (bars.length > 0 ? <><BarChart bars={bars} color={C.harvest} suffix={chartUnit ? ` ${chartUnit}` : ""} />
+              {focusStats && <div style={{ ...row, fontSize: 12.5, marginTop: 4 }}>{focusStats.totalLabel ? <>🧺 {focusStats.totalLabel} over {focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"} (all time). </> : null}{focusStats.last && <>Last {fmtDate(focusStats.last)}.</>}</div>}
+            </> : <p style={{ fontSize: 12.5, color: C.muted, margin: "0 0 8px" }}>No {focus} picks in this window.</p>) : null}
           {Object.keys(harvestByCrop).length ? <>
+            <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "6px 0 2px" }}>This window</div>
             {Object.entries(harvestByCrop).map(([crop, v]) => { const tot = Object.entries(v.units).map(([u, q]) => `${q} ${u}`).join(", ");
-              return <div key={crop} style={row}>• <strong>{crop}</strong> — {v.count} pick{v.count === 1 ? "" : "s"}{tot ? `, total ${tot}` : ""}</div>; })}
-            <div style={{ ...row, color: C.muted, marginTop: 4 }}>Picks logged:</div>
-            {harvestBack.slice(0, 30).map((f, i) => <div key={i} style={{ ...row, color: C.muted, fontSize: 12 }}>· {fmtDate(f.date)} — {f.plant} ({f.where}): {f.qty != null ? `${f.qty} ${f.unit}` : "picked"}{f.what ? ` — ${f.what}` : ""}</div>)}
-          </> : <div style={{ ...row, color: C.muted }}>No harvests logged in this window. Record them from a plant's Journal (the Harvest tab).</div>}
-        </>}
+              return <div key={crop} style={row}>• <strong>{crop}</strong> — {v.count} pick{v.count === 1 ? "" : "s"}{tot ? `, ${tot}` : ""}</div>; })}
+          </> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Log picks from Gather &amp; care, or a plant's journal.</p>}
+        </StatCard>
 
-        {on.planned && <><H>Planned plantings ({custom ? "to " + fmtDate(cTo) : mode >= 99999 ? "ahead" : "next " + windowLabel.toLowerCase()})</H>
-          {plannedIn.length ? plannedIn.map((p, i) => <div key={i} style={row}>• <strong>{p.plant}</strong> — {fmtDate(p.date)} · {p.where}</div>) : <div style={{ ...row, color: C.muted }}>None queued in this window.</div>}
-        </>}
+        <StatCard icon="⏳" label="Ready soon" value={harvestsIn.length} accent={C.fern}
+          sub={harvestsIn.length ? `${harvestsIn[0].plant} — ${harvestsIn[0].label}` : "none estimated"}
+          expandable open={cardOpen("upc")} onToggle={() => setOpenCard(openCard === "upc" ? null : "upc")}>
+          {harvestsIn.length ? harvestsIn.map((h, i) => <div key={i} style={row}>• <strong>{h.plant}</strong> — {h.label} <span style={{ color: C.muted }}>· {h.where}</span></div>) : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Nothing estimated in this window.</p>}
+        </StatCard>
 
-        {on.rotation && <><H>Crop rotation status</H>
-          {totalBeds ? bedSecs.map((s) => (s.beds || []).map((b) => { const fam = bedFamily(b, today);
-            return <div key={b.id} style={row}>• <strong>{b.name}</strong> ({s.name}): last {fam ? FAMILIES[fam].label : "nothing yet"} → plant next <strong style={{ color: C.fern }}>{GROUP_LABEL[rotationNextGroup(fam)]}</strong></div>; })) : <div style={{ ...row, color: C.muted }}>No vegetable beds yet.</div>}
-        </>}
+        <StatCard icon="🌱" label="Growing now" value={growingCount} accent={C.fern}
+          sub={`${totalBeds} bed${totalBeds === 1 ? "" : "s"} · ${totalPlants} tree${totalPlants === 1 ? "" : "s"} & bushes`}
+          expandable open={cardOpen("grow")} onToggle={() => setOpenCard(openCard === "grow" ? null : "grow")}>
+          {growingBeds.length || growingPlantSecs.length ? <>
+            {growingBeds.map((g, i) => <div key={i} style={row}>• <strong>{g.where}</strong>: {Object.entries(g.counts).map(([n, q]) => `${n}${q > 1 ? ` ×${q}` : ""}`).join(", ")}</div>)}
+            {growingPlantSecs.map((g, i) => <div key={"p" + i} style={row}>• <strong>{g.where}</strong>: {g.names.join(", ")}</div>)}
+          </> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Nothing recorded yet.</p>}
+        </StatCard>
 
-        {on.care && <><H>Tree & berry care — this {season.toLowerCase()}</H>
-          {care.length ? care.map((t, i) => <div key={i} style={row}>• <strong>{t.what}</strong> ({t.where}) — {t.detail}</div>) : <div style={{ ...row, color: C.muted }}>Nothing due this season.</div>}
-        </>}
+        <StatCard icon="🛠️" label="Jobs due" value={jobs.length} accent={jobs.length ? C.harvest : C.fern}
+          sub={jobs.length ? "this & next month" : "all clear"}
+          expandable open={cardOpen("jobs")} onToggle={() => setOpenCard(openCard === "jobs" ? null : "jobs")}>
+          {jobs.length ? jobs.map((t, i) => <div key={i} style={row}>• <strong>{t.what}</strong> <span style={{ color: C.muted }}>({t.where}){t.detail ? ` — ${t.detail}` : ""}</span></div>) : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No scheduled tasks due.</p>}
+        </StatCard>
 
-        {on.log && <><H>Feed / spray / notes log</H>
-          {log.length ? log.slice(0, 40).map((f, i) => { const ty = f.type || "feed"; const tag = ty === "harvest" ? "🧺" : ty === "note" ? "📝" : "💧";
-            return <div key={i} style={row}>• {fmtDate(f.date)} {tag} <strong>{f.plant}</strong> ({f.where}): {ty === "harvest" ? (f.qty != null ? `${f.qty} ${f.unit}` : "picked") + (f.what ? ` — ${f.what}` : "") : f.what}</div>; }) : <div style={{ ...row, color: C.muted }}>Nothing logged yet.</div>}
-        </>}
-      </div>)}
+        {hasStock && <StatCard icon="🐔" label="Animals" value={totalHead} accent={C.fern}
+          sub={Object.entries(bySpeciesStock).map(([sp, ms]) => `${ms.reduce((n, m) => n + mobHead(m), 0)} ${stockLib[sp]?.label || sp}`).join(" · ") || "none on hand"}
+          expandable open={cardOpen("animals")} onToggle={() => setOpenCard(openCard === "animals" ? null : "animals")}>
+          {allMobs.length ? Object.entries(bySpeciesStock).map(([sp, ms]) => { const head = ms.reduce((n, m) => n + mobHead(m), 0);
+            return <div key={sp} style={row}>{stockLib[sp]?.emoji} <strong>{stockLib[sp]?.label}</strong>: {head} — {ms.map((m) => `${mobHead(m)} ${m.klass} (${m.area})`).join(", ")}</div>; }) : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No animals recorded.</p>}
+          {Object.keys(products).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
+            {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}</>}
+          {treatList.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Treatments &amp; events · {windowLabel}</div>
+            {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label}{t.what ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
+          {(data.archive || []).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Past animals</div>
+            {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : "❌ died"} {fmtDate(a.archived)}</div>)}</>}
+        </StatCard>}
+
+        {hasChooks && <StatCard icon="💰" label={`Net · ${windowLabel}`} value={money(net)} accent={net >= 0 ? C.fern : C.beet}
+          sub={`In ${money(totalIn)} · Out ${money(totalOut)}`}
+          expandable open={cardOpen("money")} onToggle={() => setOpenCard(openCard === "money" ? null : "money")}>
+          <div style={row}>💰 In <strong>{money(totalIn)}</strong>{birdRevenue ? <span style={{ color: C.muted, fontSize: 12.5 }}> (eggs {money(revenue)} · birds {money(birdRevenue)})</span> : null}</div>
+          <div style={row}>💸 Out <strong>{money(totalOut)}</strong>{birdCost ? <span style={{ color: C.muted, fontSize: 12.5 }}> (feed {money(feedCost)} · birds {money(birdCost)})</span> : null}</div>
+          {(birdsBought > 0 || birdsSold > 0) && <div style={{ ...row, color: C.muted, fontSize: 12 }}>{birdsBought > 0 ? `${birdsBought} bought` : ""}{birdsBought > 0 && birdsSold > 0 ? " · " : ""}{birdsSold > 0 ? `${birdsSold} sold` : ""} this window</div>}
+          {ledgerRows.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Entries <span style={{ fontSize: 11, fontWeight: 400 }}>(add from Gather &amp; care)</span></div>
+            {ledgerRows.slice(0, 40).map((x) => (<div key={x.kind + x.id} style={{ ...row, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ flex: 1 }}>· {fmtDate(x.date)} — {x.kind === "feed" ? `🌾 Feed ${money(x.cost)}${x.kg ? ` · ${x.kg}kg` : ""}` : x.kind === "purchases" ? `🐔 Bought ${x.birds || 0} ${money(x.cost)}` : x.kind === "birdSales" ? `🐓 Sold ${x.birds || 0} ${money(x.amount)}` : `🥚 Sold ${x.eggs} eggs ${money(x.amount)}`}{x.note ? ` — ${x.note}` : ""}</span>
+              <button onClick={() => removeLedger(x.kind, x.id)} style={iconBtn}><Trash2 size={12} /></button>
+            </div>))}</>}
+        </StatCard>}
+
+      </div>
+
+      {totalBeds > 0 && <div style={{ ...card, background: "#fff", marginTop: 14 }}>
+        <H>Crop rotation — plant next</H>
+        {bedSecs.map((s) => (s.beds || []).map((b) => { const fam = bedFamily(b, today);
+          return <div key={b.id} style={row}>• <strong>{b.name}</strong> ({s.name}): last {fam ? FAMILIES[fam].label : "nothing"} → <strong style={{ color: C.fern }}>{GROUP_LABEL[rotationNextGroup(fam)]}</strong></div>; }))}
+      </div>}
     </div>
   );
 }
 
 // =========================== shared ===============================
+function StatCard({ icon, label, value, sub, accent = C.fern, open, onToggle, expandable, children }) {
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 14, padding: 14, gridColumn: open ? "1 / -1" : "auto", boxShadow: open ? "0 1px 8px rgba(38,65,47,.08)" : "none" }}>
+      <button onClick={expandable ? onToggle : undefined} style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: expandable ? "pointer" : "default", padding: 0, fontFamily: "inherit" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 17 }}>{icon}</span>
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 600, flex: 1, textTransform: "uppercase", letterSpacing: .3 }}>{label}</span>
+          {expandable && <span style={{ color: C.muted, fontSize: 13 }}>{open ? "▾" : "▸"}</span>}
+        </div>
+        <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 27, fontWeight: 600, color: accent, lineHeight: 1.1, marginTop: 5 }}>{value}</div>
+        {sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{sub}</div>}
+      </button>
+      {open && children && <div style={{ marginTop: 12, borderTop: `1px solid ${C.line}`, paddingTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
+
 function BarChart({ bars, color = C.harvest, suffix = "" }) {
   const max = Math.max(1, ...bars.map((b) => b.value));
   return (
