@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 100";
+const APP_BUILD = "2026-06-25 · build 102";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -3860,28 +3860,27 @@ function EggLogger({ data, setData, display }) {
   );
 }
 
-function EggChart({ days }) {
-  if (!days || !days.length) return null;
+function EggChart({ points, avgWindow = 7 }) {
+  if (!points || !points.length) return null;
   const W = 600, H = 170, padL = 26, padR = 8, padT = 10, padB = 20;
-  const n = days.length;
-  const maxE = Math.max(1, ...days.map((d) => d.eggs));
+  const n = points.length;
+  const maxE = Math.max(1, ...points.map((d) => d.value));
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
   const y = (v) => padT + innerH - (v / maxE) * innerH;
   const bw = Math.max(1, Math.min(16, (innerW / n) * 0.7));
-  const N = 7;
-  const avg = days.map((d, i) => { const s = days.slice(Math.max(0, i - N + 1), i + 1); return s.reduce((a, b) => a + b.eggs, 0) / s.length; });
+  const N = Math.max(1, avgWindow);
+  const avg = points.map((d, i) => { const s = points.slice(Math.max(0, i - N + 1), i + 1); return s.reduce((a, b) => a + b.value, 0) / s.length; });
   const line = avg.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const fmtShort = (k) => { const d = new Date(k * 86400000); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
   const ticks = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", marginTop: 4 }}>
       {[0, 0.5, 1].map((t) => { const v = maxE * t, yy = y(v); return (<g key={t}>
         <line x1={padL} x2={W - padR} y1={yy} y2={yy} stroke={C.line} strokeWidth="1" />
         <text x={padL - 4} y={yy + 3} textAnchor="end" fontSize="9" fill={C.muted}>{Math.round(v)}</text></g>); })}
-      {days.map((d, i) => d.eggs > 0 ? <rect key={i} x={x(i) - bw / 2} y={y(d.eggs)} width={bw} height={Math.max(0, padT + innerH - y(d.eggs))} rx="1" fill={hexA(C.harvest, .55)} /> : null)}
-      <polyline points={line} fill="none" stroke={C.fern} strokeWidth="2" strokeLinejoin="round" />
-      {ticks.map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="9" fill={C.muted}>{fmtShort(days[i].k)}</text>)}
+      {points.map((d, i) => d.value > 0 ? <rect key={i} x={x(i) - bw / 2} y={y(d.value)} width={bw} height={Math.max(0, padT + innerH - y(d.value))} rx="1" fill={hexA(C.harvest, .55)} /> : null)}
+      {N > 1 && <polyline points={line} fill="none" stroke={C.fern} strokeWidth="2" strokeLinejoin="round" />}
+      {ticks.map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="9" fill={C.muted}>{points[i].label}</text>)}
     </svg>
   );
 }
@@ -3914,6 +3913,22 @@ function ReportView({ data, setData, month, hemi, display }) {
   const limitK = winTo;
   const windowLabel = custom ? `${fmtDate(cFrom)} – ${fmtDate(cTo)}` : (mode >= 99999 ? "all time" : ((HORIZONS.find(([, d]) => d === mode) || [])[0] || ""));
   const wideHorizon = (winTo - tk) > 60;
+  const [showSettings, setShowSettings] = useState(false);
+  const [groupBy, setGroupBy] = useState("auto"); // auto | day | week | month | year
+  const spanDays = winTo - winFrom;
+  const autoUnit = spanDays <= 45 ? "day" : spanDays <= 370 ? "week" : spanDays <= 1100 ? "month" : "year";
+  const gUnit = groupBy === "auto" ? autoUnit : groupBy;
+  const bucketKey = (iso) => { const d = new Date(iso);
+    if (gUnit === "day") return iso.slice(0, 10);
+    if (gUnit === "year") return iso.slice(0, 4);
+    if (gUnit === "week") { const dt = new Date(d); const off = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - off); return dt.toISOString().slice(0, 10); }
+    return iso.slice(0, 7); };
+  const bucketLabel = (key) => {
+    if (gUnit === "year") return key;
+    if (gUnit === "month") { const m = Number(key.slice(5, 7)); return `${MONTHS[m - 1]} ${key.slice(2, 4)}`; }
+    const d = new Date(key); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+  const avgWindow = gUnit === "day" ? 7 : gUnit === "week" ? 4 : 3;
+  const capN = (arr, n = 370) => arr.length > n ? arr.slice(arr.length - n) : arr;
   const [scope, setScope] = useState("all");
   const [reportMode, setReportMode] = useState("garden"); // garden | crop
   const scopeName = scope === "all" ? "the whole property" : (data.sections.find((s) => s.id === scope)?.name || "this area");
@@ -3932,19 +3947,9 @@ function ReportView({ data, setData, month, hemi, display }) {
   const focusStats = focus ? cropHarvestStats(data, focus) : null;
   const unitCounts = {}; focusEntries.forEach((h) => { if (h.qty != null) { const u = h.unit || "picks"; unitCounts[u] = (unitCounts[u] || 0) + 1; } });
   const chartUnit = Object.entries(unitCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  const [gran, setGran] = useState("month"); // day | week | month | year
-  const bucketKey = (iso) => { const d = new Date(iso);
-    if (gran === "day") return iso.slice(0, 10);
-    if (gran === "year") return iso.slice(0, 4);
-    if (gran === "week") { const dt = new Date(d); const off = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - off); return dt.toISOString().slice(0, 10); }
-    return iso.slice(0, 7); };
-  const bucketLabel = (key) => {
-    if (gran === "year") return key;
-    if (gran === "month") { const m = Number(key.slice(5, 7)); return `${MONTHS[m - 1]} ${key.slice(2, 4)}`; }
-    const d = new Date(key); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
   const buckets = {};
   focusEntries.forEach((h) => { if (!h.date) return; const key = bucketKey(h.date); const val = chartUnit ? ((h.unit || "picks") === chartUnit && h.qty != null ? h.qty : 0) : 1; buckets[key] = Math.round(((buckets[key] || 0) + val) * 100) / 100; });
-  const bars = Object.entries(buckets).sort().map(([key, v]) => ({ label: bucketLabel(key), value: v }));
+  const bars = capN(Object.entries(buckets).sort().map(([key, v]) => ({ label: bucketLabel(key), value: v })));
 
   // gather (scoped to the chosen area, or all)
   const sections = data.sections.filter((s) => scope === "all" || s.id === scope);
@@ -4023,8 +4028,8 @@ function ReportView({ data, setData, month, hemi, display }) {
   const totalIn = revenue + birdRevenue; const totalOut = feedCost + birdCost; const net = totalIn - totalOut;
   const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length || birdSalesW.length;
   const hasStock = allMobs.length > 0 || (data.archive || []).length > 0;
-  const eggByDay = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggByDay[k] = (eggByDay[k] || 0) + (Number(f.qty) || 0); } }); });
-  const eggDays = (() => { const ks = Object.keys(eggByDay).map(Number); if (!ks.length) return []; let lo = Math.min(...ks), hi = Math.max(...ks); if (hi - lo > 120) lo = hi - 120; const out = []; for (let k = lo; k <= hi; k++) out.push({ k, eggs: eggByDay[k] || 0 }); return out; })();
+  const eggBucketMap = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) { const key = bucketKey(f.date); eggBucketMap[key] = (eggBucketMap[key] || 0) + (Number(f.qty) || 0); } } }); });
+  const eggPoints = capN(Object.keys(eggBucketMap).sort().map((key) => ({ label: bucketLabel(key), value: eggBucketMap[key] })));
   const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   const [openCard, setOpenCard] = useState(null);
@@ -4044,25 +4049,43 @@ function ReportView({ data, setData, month, hemi, display }) {
         <button onClick={() => { setAllOpen(true); setTimeout(() => window.print(), 60); }} style={btn(C.soil)}><Printer size={15} /> Print / PDF</button>
       </div>
 
-      <div className="report-toggles" style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
-        <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>Period:</span>
-        {HORIZONS.map(([label, d]) => <button key={d} onClick={() => setMode(d)} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: !custom && mode === d ? C.fernDk : C.panel2, color: !custom && mode === d ? "#fff" : C.muted, border: `1px solid ${!custom && mode === d ? C.fernDk : C.line}` }}>{label}</button>)}
-        <button onClick={() => setMode("custom")} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: custom ? C.fernDk : C.panel2, color: custom ? "#fff" : C.muted, border: `1px solid ${custom ? C.fernDk : C.line}` }}>Custom</button>
-        {custom && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-          <span style={{ color: C.muted, fontSize: 12 }}>to</span>
-          <input type="date" value={cTo} onChange={(e) => setCTo(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-        </span>}
-      </div>
+      <div className="report-toggles" style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => setShowSettings((v) => !v)} style={{ ...btnOutline(C.fern), flex: "1 1 auto", justifyContent: "space-between" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Settings size={14} /> Report settings</span>
+            <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 400 }}>{windowLabel} · by {gUnit}{scope !== "all" ? ` · ${data.sections.find((s) => s.id === scope)?.name || "area"}` : ""} {showSettings ? "▾" : "▸"}</span>
+          </button>
+          <button onClick={() => { setAllOpen(!allOpen); setOpenCard(null); }} style={{ ...chip, cursor: "pointer", padding: "8px 12px", background: allOpen ? C.fern : C.panel2, color: allOpen ? "#fff" : C.muted, border: `1px solid ${allOpen ? C.fern : C.line}` }}>{allOpen ? "Collapse all" : "Expand all"}</button>
+        </div>
 
-      <div className="report-toggles" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        <span style={{ fontSize: 12, color: C.muted }}>Area:</span>
-        <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 8px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
-          <option value="all">Whole property</option>
-          {data.sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <span style={{ flex: 1 }} />
-        <button onClick={() => { setAllOpen(!allOpen); setOpenCard(null); }} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: allOpen ? C.fern : C.panel2, color: allOpen ? "#fff" : C.muted, border: `1px solid ${allOpen ? C.fern : C.line}` }}>{allOpen ? "Collapse all" : "Expand all"}</button>
+        {showSettings && <div style={{ ...card, background: C.panel2, marginTop: 8, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 5 }}>PERIOD</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              {HORIZONS.map(([label, d]) => <button key={d} onClick={() => setMode(d)} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: !custom && mode === d ? C.fernDk : "#fff", color: !custom && mode === d ? "#fff" : C.muted, border: `1px solid ${!custom && mode === d ? C.fernDk : C.line}` }}>{label}</button>)}
+              <button onClick={() => setMode("custom")} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: custom ? C.fernDk : "#fff", color: custom ? "#fff" : C.muted, border: `1px solid ${custom ? C.fernDk : C.line}` }}>Custom</button>
+              {custom && <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <input type="date" value={cFrom} onChange={(e) => setCFrom(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: "#fff", fontFamily: "inherit" }} />
+                <span style={{ color: C.muted, fontSize: 12 }}>to</span>
+                <input type="date" value={cTo} onChange={(e) => setCTo(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: "#fff", fontFamily: "inherit" }} />
+              </span>}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 5 }}>GROUP GRAPHS BY</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              {[["auto", `Auto (${autoUnit})`], ["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]].map(([v, l]) => { const cur = groupBy === v; return <button key={v} onClick={() => setGroupBy(v)} style={{ ...chip, cursor: "pointer", padding: "6px 12px", background: cur ? C.fern : "#fff", color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{l}</button>; })}
+            </div>
+            <p style={{ fontSize: 11, color: C.muted, margin: "5px 0 0", lineHeight: 1.5 }}>How the egg and harvest charts bucket time — e.g. a year by month, or ten years by year. Auto picks a sensible bucket for the period.</p>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 5 }}>AREA</div>
+            <select value={scope} onChange={(e) => setScope(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 9px", fontSize: 12.5, color: C.ink, background: "#fff", fontFamily: "inherit" }}>
+              <option value="all">Whole property</option>
+              {data.sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        </div>}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, alignItems: "start" }}>
@@ -4070,10 +4093,10 @@ function ReportView({ data, setData, month, hemi, display }) {
         {hasChooks && <StatCard icon="🥚" label={`Eggs · ${windowLabel}`} value={eggsLaid} accent={C.harvest}
           sub={`${eggsSold} sold · ${eggsKept} kept${costPerEgg != null ? ` · ~${money(costPerEgg)}/egg` : ""}`}
           expandable open={cardOpen("eggs")} onToggle={() => setOpenCard(openCard === "eggs" ? null : "eggs")}>
-          {eggDays.length > 1 ? <><EggChart days={eggDays} />
+          {eggPoints.length > 1 ? <><EggChart points={eggPoints} avgWindow={avgWindow} />
             <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
-              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> eggs/day</span>
-              <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> 7-day avg</span>
+              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> eggs/{gUnit}</span>
+              <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> rolling avg</span>
             </div></> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Log daily collections in Gather &amp; care to see the trend here.</p>}
           {costPerEgg != null && <div style={{ ...row, marginTop: 8 }}>Running cost per egg <strong>{money(costPerEgg)}</strong> · ~{money(costPerEgg * 12)}/dozen. The {eggsKept} you kept cost about <strong>{money(keptCost)}</strong>.</div>}
         </StatCard>}
@@ -4087,7 +4110,7 @@ function ReportView({ data, setData, month, hemi, display }) {
               <option value="">—</option>
               {cropList.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            {focus && bars.length > 0 && <span style={{ display: "inline-flex", gap: 4 }}>{[["week", "W"], ["month", "M"], ["year", "Y"]].map(([g, lab]) => { const cur = gran === g; return <button key={g} onClick={() => setGran(g)} style={{ ...chip, cursor: "pointer", padding: "2px 8px", fontSize: 11, background: cur ? C.fern : C.panel2, color: cur ? "#fff" : C.muted, border: `1px solid ${cur ? C.fern : C.line}` }}>{lab}</button>; })}</span>}
+            {focus && bars.length > 0 && <span style={{ fontSize: 11, color: C.muted }}>grouped by {gUnit}</span>}
           </div>
           {focus ? (bars.length > 0 ? <><BarChart bars={bars} color={C.harvest} suffix={chartUnit ? ` ${chartUnit}` : ""} />
               {focusStats && <div style={{ ...row, fontSize: 12.5, marginTop: 4 }}>{focusStats.totalLabel ? <>🧺 {focusStats.totalLabel} over {focusStats.picks} pick{focusStats.picks === 1 ? "" : "s"} (all time). </> : null}{focusStats.last && <>Last {fmtDate(focusStats.last)}.</>}</div>}
