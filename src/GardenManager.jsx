@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 103";
+const APP_BUILD = "2026-06-25 · build 104";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2094,6 +2094,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const [selMode, setSelMode] = useState(false);
   const [selSet, setSelSet] = useState(() => new Set());
   const [picker, setPicker] = useState(null); // null | "plant" | "plannext"
+  const [editSqId, setEditSqId] = useState(null); // planting id whose squares are being edited
   const [palQ, setPalQ] = useState("");
   const [hover, setHover] = useState(null);
   const greenhouse = section.kind === "greenhouse";
@@ -2164,9 +2165,36 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
     let next = plantings.filter((p) => p.id !== id);
     if (B && B.covers && B.covers.length) {
       next = next.map((p) => { const cov = B.covers.filter((cv) => cv.pid === p.id); if (!cov.length) return p;
-        return { ...p, cells: p.cells.map((c) => (cov.some((cv) => cv.x === c.x && cv.y === c.y) && c.removed === B.planted) ? { ...c, removed: null } : c) }; });
+        return { ...p, cells: p.cells.map((c) => { const cv = cov.find((cv) => cv.x === c.x && cv.y === c.y); const at = cv ? (cv.at || B.planted) : null; return (cv && c.removed === at) ? { ...c, removed: null } : c; }) }; });
     }
     commit(next); setSel(null); };
+
+  // --- edit a planting's squares (extend / shrink; new squares inherit its settings) ---
+  const startEditSquares = (p) => { const live = new Set((p.cells || []).filter((c) => !c.removed).map((c) => keyOf(c.x, c.y)));
+    setEditSqId(p.id); setSelMode(true); setPicker(null); setSel(null); setSelSet(live); };
+  const cancelEditSquares = () => { setEditSqId(null); setSelMode(false); clearSel(); setPicker(null); };
+  const applyEditSquares = () => { const me = plantings.find((p) => p.id === editSqId); if (!me) { cancelEditSquares(); return; }
+    const target = selSet;
+    const liveKeys = new Set((me.cells || []).filter((c) => !c.removed).map((c) => keyOf(c.x, c.y)));
+    const addedKeys = [...target].filter((k) => !liveKeys.has(k));
+    const removedXY = [...liveKeys].filter((k) => !target.has(k)).map(xyOf);
+    let covers = [...(me.covers || [])];
+    // take over newly-added squares owned by another active planting (record so deletion can restore)
+    let next = plantings.map((p) => { if (p.id === editSqId) return p; let changed = false;
+      const cells = p.cells.map((c) => { const k = keyOf(c.x, c.y); if (addedKeys.includes(k) && !c.removed) { changed = true; covers.push({ pid: p.id, x: c.x, y: c.y, at: V }); return { ...c, removed: V }; } return c; });
+      return changed ? { ...p, cells } : p; });
+    // squares removed from this planting: hand back any crop it had covered there
+    if (covers.length && removedXY.length) {
+      const back = covers.filter((cv) => removedXY.some((r) => r.x === cv.x && r.y === cv.y));
+      if (back.length) { next = next.map((p) => { const cov = back.filter((cv) => cv.pid === p.id); if (!cov.length) return p;
+          return { ...p, cells: p.cells.map((c) => { const cv = cov.find((cv) => cv.x === c.x && cv.y === c.y); const at = cv ? (cv.at || me.planted) : null; return (cv && c.removed === at) ? { ...c, removed: null } : c; }) }; });
+        covers = covers.filter((cv) => !removedXY.some((r) => r.x === cv.x && r.y === cv.y)); }
+    }
+    const keptRemoved = (me.cells || []).filter((c) => c.removed && !target.has(keyOf(c.x, c.y)));
+    const active = [...target].map((k) => { const { x, y } = xyOf(k); return { x, y, removed: null }; });
+    next = next.map((p) => p.id === editSqId ? { ...p, cells: [...active, ...keptRemoved], covers } : p);
+    commit(next); setEditSqId(null); setSelMode(false); clearSel(); setPicker(null);
+    setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: editSqId }); };
   const nextGroupAfter = (famKey) => { const g = famKey ? FAMILIES[famKey]?.group : null; return (!g || g === "flexible") ? "legume" : ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(g) + 1) % ROTATION_SEQUENCE.length]; };
   const planFor = (p) => { const g = nextGroupAfter(p.fam); const meta = lib.vegByName(p.plant);
     const hm = (meta?.d && p.planted) ? (new Date(addDays(p.planted, meta.d)).getMonth() + 1) : month;
@@ -2225,9 +2253,21 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           {/* select toggle + action bar */}
           <div style={{ marginBottom: 8 }}>
             {!selMode ? (
-              <button onClick={() => { setSelMode(true); setSel(null); }} style={btn(C.fern)}><Grid3x3 size={14} /> Select squares</button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button onClick={() => { setSelMode(true); setSel(null); }} style={btn(C.fern)}><Grid3x3 size={14} /> Select squares</button>
+                {selPlanting && <button onClick={() => startEditSquares(selPlanting)} style={btnOutline(C.fern)}><Grid3x3 size={14} /> Edit {selPlanting.plant} squares</button>}
+              </div>
             ) : (
               <div style={{ ...card, padding: 10, background: C.panel2 }}>
+                {editSqId ? (() => { const me = plantings.find((p) => p.id === editSqId); return (
+                  <div>
+                    <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>Editing squares for <span style={{ color: C.fern }}>{me?.plant}</span> — {selSet.size} square{selSet.size === 1 ? "" : "s"}. Tap to add or remove.</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button onClick={applyEditSquares} disabled={!selSet.size} style={{ ...btn(C.fern), opacity: selSet.size ? 1 : .4 }}><Check size={14} /> Apply</button>
+                      <button onClick={cancelEditSquares} style={btnOutline(C.muted)}><X size={13} /> Cancel</button>
+                    </div>
+                    <p style={{ fontSize: 11, color: C.muted, margin: "6px 0 0", lineHeight: 1.5 }}>Added squares inherit {me?.plant}'s variety, planting date and notes. Removed squares are freed up.</p>
+                  </div>); })() : (<>
                 <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>{selSet.size ? `${selSet.size} square${selSet.size === 1 ? "" : "s"} selected` : "Tap squares, or drag to paint an area"}</div>
                 {picker ? (
                   <div>
@@ -2253,6 +2293,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
                     {selSet.size > 0 && <button onClick={clearSel} style={btnOutline(C.muted)}>Deselect</button>}
                     <button onClick={() => { setSelMode(false); clearSel(); setPicker(null); }} style={btnOutline(C.muted)}><X size={13} /> Done</button>
                   </div>)}
+                </>)}
               </div>)}
           </div>
 
