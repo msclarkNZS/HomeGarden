@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 102";
+const APP_BUILD = "2026-06-25 · build 103";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -2137,8 +2137,11 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
 
   // --- actions on the selection ---
   const plantThese = (crop) => { const cells = selCells(); if (!cells.length) return;
-    const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed) ? { ...c, removed: V } : c) }));
-    const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted: V, sown: null, ferts: [], notes: "", cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
+    const covers = [];
+    const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => {
+      if (selSet.has(keyOf(c.x, c.y)) && !c.removed) { covers.push({ pid: p.id, x: c.x, y: c.y }); return { ...c, removed: V }; }
+      return c; }) }));
+    const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted: V, sown: null, ferts: [], notes: "", covers, cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
     commit([...next, np]); clearSel(); setPicker(null); setSelMode(false); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: np.id }); };
   const clearThese = () => { const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed && (!p.planted || new Date(p.planted) <= viewDate)) ? { ...c, removed: V } : c) }));
     commit(next); clearSel(); };
@@ -2156,7 +2159,14 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const patchPlanting = (id, patch) => commit(plantings.map((p) => { if (p.id !== id) return p;
     if (Object.prototype.hasOwnProperty.call(patch, "removed")) return { ...p, ...patch, cells: p.cells.map((c) => ({ ...c, removed: patch.removed })) };
     return { ...p, ...patch }; }));
-  const removePlanting = (id) => { commit(plantings.filter((p) => p.id !== id)); setSel(null); };
+  const removePlanting = (id) => {
+    const B = plantings.find((p) => p.id === id);
+    let next = plantings.filter((p) => p.id !== id);
+    if (B && B.covers && B.covers.length) {
+      next = next.map((p) => { const cov = B.covers.filter((cv) => cv.pid === p.id); if (!cov.length) return p;
+        return { ...p, cells: p.cells.map((c) => (cov.some((cv) => cv.x === c.x && cv.y === c.y) && c.removed === B.planted) ? { ...c, removed: null } : c) }; });
+    }
+    commit(next); setSel(null); };
   const nextGroupAfter = (famKey) => { const g = famKey ? FAMILIES[famKey]?.group : null; return (!g || g === "flexible") ? "legume" : ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(g) + 1) % ROTATION_SEQUENCE.length]; };
   const planFor = (p) => { const g = nextGroupAfter(p.fam); const meta = lib.vegByName(p.plant);
     const hm = (meta?.d && p.planted) ? (new Date(addDays(p.planted, meta.d)).getMonth() + 1) : month;
