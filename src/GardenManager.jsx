@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 109";
+const APP_BUILD = "2026-06-25 · build 110";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -968,26 +968,34 @@ export default function GardenManager() {
 function useDrag(containerRef, applyPatch) {
   const ref = useRef(null);
   const movedRef = useRef(false);
+  const applyRef = useRef(applyPatch);
+  applyRef.current = applyPatch;
+  useEffect(() => {
+    const move = (e) => {
+      const d = ref.current; if (!d) return;
+      const pdx = e.clientX - d.sx, pdy = e.clientY - d.sy;
+      if (!d.active && Math.hypot(pdx, pdy) < 5) return; // tap threshold
+      d.active = true; movedRef.current = true;
+      if (e.cancelable) e.preventDefault();
+      const dx = (pdx / d.rect.width) * 100;
+      const dy = (pdy / d.rect.height) * 100;
+      if (d.mode === "move") applyRef.current(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
+      else applyRef.current(d.id, { w: clamp(d.w + dx, 8, 100 - d.x), h: clamp(d.h + dy, 8, 100 - d.y) });
+    };
+    const up = () => { if (!ref.current) return; ref.current = null; setTimeout(() => { movedRef.current = false; }, 0); };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+  }, []);
   const onPointerDown = (e, item, mode) => {
     e.stopPropagation();
     const rect = containerRef.current.getBoundingClientRect();
-    ref.current = { id: item.id, mode, rect, sx: e.clientX, sy: e.clientY, x: item.x, y: item.y, w: item.w ?? 0, h: item.h ?? 0, pid: e.pointerId, active: false };
+    ref.current = { id: item.id, mode, rect, sx: e.clientX, sy: e.clientY, x: item.x, y: item.y, w: item.w ?? 0, h: item.h ?? 0, active: false };
     movedRef.current = false;
-    // capture on the container (stable node) so the drag survives re-renders mid-move on touch
-    containerRef.current.setPointerCapture?.(e.pointerId);
   };
-  const onPointerMove = (e) => {
-    const d = ref.current; if (!d) return;
-    const pdx = e.clientX - d.sx, pdy = e.clientY - d.sy;
-    if (!d.active && Math.hypot(pdx, pdy) < 5) return; // ignore tiny jitter so a tap stays a tap
-    d.active = true; movedRef.current = true;
-    const dx = (pdx / d.rect.width) * 100;
-    const dy = (pdy / d.rect.height) * 100;
-    if (d.mode === "move") applyPatch(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
-    else applyPatch(d.id, { w: clamp(d.w + dx, 8, 100 - d.x), h: clamp(d.h + dy, 8, 100 - d.y) });
-  };
-  const onPointerUp = () => { const d = ref.current; if (d && containerRef.current) containerRef.current.releasePointerCapture?.(d.pid); ref.current = null; setTimeout(() => { movedRef.current = false; }, 0); };
-  return { onPointerDown, onPointerMove, onPointerUp, moved: () => movedRef.current };
+  const noop = () => {};
+  return { onPointerDown, onPointerMove: noop, onPointerUp: noop, moved: () => movedRef.current };
 }
 
 // ===================== date slider ================================
