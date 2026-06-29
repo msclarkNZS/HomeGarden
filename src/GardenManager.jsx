@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 105";
+const APP_BUILD = "2026-06-25 · build 106";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -377,7 +377,7 @@ async function rawSet(key, value) {
   try { await idbSet(key, value); } catch (e) { try { localStorage.setItem(key, value); } catch {} }
 }
 
-const blank = { propertyName: "Our Lifestyle Block", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {}, stockDone: {} };
+const blank = { propertyName: "Our Lifestyle Block", bg: null, sections: [], place: DEFAULT_PLACE, customPlants: { veg: [], fruit: [], berry: [] }, plantEdits: {}, harvests: [], meatLog: [], customBreeds: {}, eggLedger: { feed: [], sales: [], purchases: [], birdSales: [] }, viewMode: "auto", phoneLanding: "season", skips: {}, snoozes: {}, stockDone: {} };
 
 function normalize(d) {
   if (!d) return blank;
@@ -396,7 +396,7 @@ function normalize(d) {
       sections: [{ id: uid(), name: "Main garden", kind: "garden", x: 30, y: 30, w: 40, h: 35, bg: d.bg || null, beds, plants: [] }] };
   } else {
     base = { ...blank, ...d, sections: (d.sections || []).map((s) => ({ ...s, beds: s.beds || [], plants: s.plants || [] })), place: d.place || DEFAULT_PLACE,
-      customPlants: { veg: [], fruit: [], berry: [], ...(d.customPlants || {}) }, plantEdits: d.plantEdits || {}, harvests: d.harvests || [] };
+      customPlants: { veg: [], fruit: [], berry: [], ...(d.customPlants || {}) }, plantEdits: d.plantEdits || {}, harvests: d.harvests || [], meatLog: d.meatLog || [] };
   }
   // migrate each bed from one-crop-per-cell into grouped plantings on a 0.25 m grid; migrate counted mobs into named animals
   base.sections = base.sections.map((s) => { const sr = realOf(s.w, s.h, base.dimM);
@@ -1705,6 +1705,7 @@ function AreaStock({ data, setData, section, display }) {
   const [bulkN, setBulkN] = useState("1");
   const [planOpen, setPlanOpen] = useState(false);
   const [clutch, setClutch] = useState({ open: false, n: "2", klass: "", damId: "", sireId: "", born: todayISO() });
+  const [cull, setCull] = useState(null); // null | { qty, unit, date }
   const animalPanelRef = useRef(null);
   const choices = speciesFor(section.kind);
   const [f, setF] = useState(() => ({ species: choices[0]?.key || "sheep", klass: choices[0]?.classes[0] || "", count: "", name: "", breed: "" }));
@@ -1762,9 +1763,12 @@ function AreaStock({ data, setData, section, display }) {
         return m; }) }));
       return { ...d, sections: pruneEmptyMobs(sections.map((s) => ({ ...s, mobs: (s.mobs || []).map((m) => m.id === toMobId && moved ? { ...m, individuals: [...(m.individuals || []), moved] } : m) }))) }; });
     setOpenAnimal(null); };
-  const archiveIndividual = (mobId, aId, status) => { const mob = mobs.find((m) => m.id === mobId); const a = (mob?.individuals || []).find((x) => x.id === aId); if (!a) return;
-    const rec = { ...a, species: mob.species, klass: a.klass || mob.klass, fromMob: mob.name || SPECIES[mob.species]?.label, fromArea: section.name, status, archived: todayISO() };
-    setData((d) => ({ ...d, archive: [...(d.archive || []), rec], sections: pruneEmptyMobs(d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) }) })) }));
+  const archiveIndividual = (mobId, aId, status, meat) => { const mob = mobs.find((m) => m.id === mobId); const a = (mob?.individuals || []).find((x) => x.id === aId); if (!a) return;
+    const when = (meat && meat.date) || todayISO();
+    const hasMeat = status === "culled" && meat && meat.qty !== "" && meat.qty != null && Number(meat.qty) > 0;
+    const rec = { ...a, species: mob.species, klass: a.klass || mob.klass, fromMob: mob.name || SPECIES[mob.species]?.label, fromArea: section.name, status, archived: when, meat: hasMeat ? { qty: Number(meat.qty), unit: meat.unit || "kg" } : undefined };
+    const meatEntry = hasMeat ? { id: uid(), date: when, species: mob.species, klass: a.klass || mob.klass, animal: a.name, qty: Number(meat.qty), unit: meat.unit || "kg" } : null;
+    setData((d) => ({ ...d, archive: [...(d.archive || []), rec], meatLog: meatEntry ? [...(d.meatLog || []), meatEntry] : (d.meatLog || []), sections: pruneEmptyMobs(d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((x) => x.id !== aId) }) })) }));
     setOpenAnimal(null); };
   const splitToNewMob = (mobId, aId) => { const newId = uid();
     setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => { if (s.id !== section.id) return s;
@@ -1777,7 +1781,7 @@ function AreaStock({ data, setData, section, display }) {
   const daysHere = (m) => Math.max(0, Math.round((Date.now() - new Date(m.placed).getTime()) / 86400000));
   const selMob = mobs.find((m) => m.id === selMobId) || null;
   const sp = selMob ? SPECIES[selMob.species] : null;
-  const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold"].includes(t)) : [];
+  const allowed = selMob ? ((buildStock(data)[selMob.species]?.log) || Object.keys(STOCK_LOG)).filter((t) => !["birth", "death", "sold", "meat"].includes(t)) : [];
   const allowedIndiv = allowed.filter((t) => t !== "eggs");
   const allowedMob = [...allowed.filter((t) => ["health", "drench", "shear"].includes(t)), ...allowed.filter((t) => t === "eggs")];
   const logType = allowedMob.includes(log.type) ? log.type : allowedMob[0];
@@ -2073,9 +2077,23 @@ function AreaStock({ data, setData, section, display }) {
               </div>
 
               <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "sold")} style={{ ...btnOutline(C.soil), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as sold?"><span style={{ fontSize: 13 }}>🏷️</span> Sold</ConfirmButton>
-                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "died")} style={{ ...btnOutline(C.beet), flex: "1 1 120px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as died?"><X size={13} /> Died</ConfirmButton>
+                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "sold")} style={{ ...btnOutline(C.soil), flex: "1 1 90px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as sold?"><span style={{ fontSize: 13 }}>🏷️</span> Sold</ConfirmButton>
+                <ConfirmButton onConfirm={() => archiveIndividual(selMob.id, openA.id, "died")} style={{ ...btnOutline(C.beet), flex: "1 1 90px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5 }} armedLabel="Archive as died?"><X size={13} /> Died</ConfirmButton>
+                <button onClick={() => setCull(cull ? null : { qty: "", unit: STOCK_LOG.meat?.unit || "kg", date: todayISO() })} style={{ ...btnOutline(C.harvest), flex: "1 1 90px", justifyContent: "center", padding: "7px 10px", fontSize: 12.5, ...(cull ? { background: hexA(C.harvest, .12) } : {}) }}><span style={{ fontSize: 13 }}>🥩</span> Cull for meat</button>
               </div>
+              {cull && <div style={{ marginTop: 8, padding: 10, borderRadius: 9, background: hexA(C.harvest, .08), border: `1px solid ${hexA(C.harvest, .4)}` }}>
+                <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>Cull {openA.name} — record the meat (optional)</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <input type="number" min="0" step="any" value={cull.qty} onChange={(e) => setCull((s) => ({ ...s, qty: e.target.value }))} placeholder="weight" style={{ ...inpS, flex: "1 1 80px" }} />
+                  <select value={cull.unit} onChange={(e) => setCull((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                  <input type="date" value={cull.date} onChange={(e) => setCull((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button onClick={() => { archiveIndividual(selMob.id, openA.id, "culled", cull); setCull(null); }} style={{ ...btn(C.harvest), flex: 1, justifyContent: "center" }}><Check size={14} /> Confirm cull</button>
+                  <button onClick={() => setCull(null)} style={btnOutline(C.muted)}><X size={13} /></button>
+                </div>
+                <p style={{ fontSize: 11, color: C.muted, margin: "6px 0 0", lineHeight: 1.5 }}>This archives {openA.name} as culled and records the meat in the harvest log &amp; report. Leave the weight blank to cull without recording any.</p>
+              </div>}
               <p style={{ fontSize: 11, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>Archiving keeps {openA.name}'s history in the report and drops them from the count. <ConfirmButton onConfirm={() => removeIndividual(selMob.id, openA.id)} style={{ ...linkBtn, color: C.beet }} armedLabel="Delete permanently?">delete permanently</ConfirmButton> (mistakes only).</p>
             </div>
           ) : (
@@ -3076,7 +3094,7 @@ function StockGuide({ data, setData, display, month }) {
 
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: C.muted, margin: "14px 0 6px" }}>JOURNAL OPTIONS</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {Object.entries(STOCK_LOG).filter(([lk]) => !["birth", "death", "sold"].includes(lk)).map(([lk, v]) => { const on = (sp.log || []).includes(lk); const locked = lk === "note";
+                  {Object.entries(STOCK_LOG).filter(([lk]) => !["birth", "death", "sold", "meat"].includes(lk)).map(([lk, v]) => { const on = (sp.log || []).includes(lk); const locked = lk === "note";
                     return (
                     <button key={lk} disabled={locked} onClick={() => { if (locked) return; const next = on ? sp.log.filter((x) => x !== lk) : [...sp.log, lk]; writeEdit(sp.key, { log: next }); }}
                       style={{ ...chip, cursor: locked ? "default" : "pointer", padding: "4px 9px", fontSize: 11.5, opacity: locked ? .6 : 1, background: on ? C.fern : "#fff", color: on ? "#fff" : C.muted, border: `1px solid ${on ? C.fern : C.line}` }}>{v.icon} {v.label}</button>); })}
@@ -3579,11 +3597,74 @@ function HarvestCareView({ data, setData, display }) {
     <div>
       <h2 style={{ ...h2(display), marginBottom: 4 }}>Gather &amp; care</h2>
       <p style={{ color: C.muted, fontSize: 13, marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>The quick jobs you do on your feet — open a garden, then a bed, then a plant group to log a pick or a feed/spray. Eggs and feed have their own tab.</p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["plants", "🌿 Garden"], ...(hasStock ? [["eggs", "🥚 Eggs & feed"]] : [])].map(([kk, l]) => (
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        {[["plants", "🌿 Garden"], ...(hasStock ? [["eggs", "🥚 Eggs & feed"], ["meat", "🥩 Meat"]] : [])].map(([kk, l]) => (
           <button key={kk} onClick={() => setSub(kk)} style={{ ...chip, cursor: "pointer", padding: "7px 13px", background: sub === kk ? C.fern : C.panel2, color: sub === kk ? "#fff" : C.muted, border: `1px solid ${sub === kk ? C.fern : C.line}` }}>{l}</button>))}
       </div>
-      {sub === "plants" ? <PlantLogger data={data} setData={setData} display={display} /> : <EggLogger data={data} setData={setData} display={display} />}
+      {sub === "plants" ? <PlantLogger data={data} setData={setData} display={display} /> : sub === "meat" ? <MeatLogger data={data} setData={setData} display={display} /> : <EggLogger data={data} setData={setData} display={display} />}
+    </div>
+  );
+}
+
+function MeatLogger({ data, setData, display }) {
+  const speciesList = [...new Set((data.meatLog || []).map((x) => x.species))];
+  const mobSpecies = [...new Set(data.sections.flatMap((s) => (s.mobs || []).map((m) => m.species)))];
+  const addSp = mobSpecies[0] || speciesList[0] || "sheep";
+  const [draft, setDraft] = useState({ animal: "", species: addSp, qty: "", unit: "kg", date: todayISO(), note: "" });
+  const [showAdd, setShowAdd] = useState(false);
+  const edit = (id, patch) => setData((d) => ({ ...d, meatLog: (d.meatLog || []).map((x) => x.id !== id ? x : { ...x, ...patch }) }));
+  const remove = (id) => setData((d) => ({ ...d, meatLog: (d.meatLog || []).filter((x) => x.id !== id) }));
+  const add = () => { if (draft.qty === "" && !draft.animal.trim()) return;
+    const entry = { id: uid(), date: draft.date || todayISO(), species: draft.species, klass: null, animal: draft.animal.trim() || "Animal", qty: draft.qty === "" ? null : Number(draft.qty), unit: draft.unit, note: draft.note.trim() || undefined };
+    setData((d) => ({ ...d, meatLog: [...(d.meatLog || []), entry] })); setDraft((s) => ({ ...s, animal: "", qty: "", note: "" })); setShowAdd(false); };
+  const entries = [...(data.meatLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const byUnit = {}; entries.forEach((x) => { const u = x.unit || "kg"; byUnit[u] = Math.round(((byUnit[u] || 0) + (Number(x.qty) || 0)) * 100) / 100; });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ ...card, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
+        Meat is recorded when you <strong>cull an animal for meat</strong> — open the Animals tab, tap an animal, and choose <strong>🥩 Cull for meat</strong>. Culled animals and their weights gather here and in the report. You can also add a one-off entry below.
+      </div>
+
+      <div style={{ ...card }}>
+        {!showAdd ? <button onClick={() => setShowAdd(true)} style={{ ...btnOutline(C.harvest), width: "100%", justifyContent: "center" }}><Plus size={14} /> Add a meat entry</button>
+        : <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Add meat</strong>
+            <button onClick={() => setShowAdd(false)} style={iconBtn}><X size={16} /></button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={draft.animal} onChange={(e) => setDraft((s) => ({ ...s, animal: e.target.value }))} placeholder="animal / label" style={{ ...inpS, flex: "1 1 110px" }} />
+            <select value={draft.species} onChange={(e) => setDraft((s) => ({ ...s, species: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{Object.entries(SPECIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+            <input type="number" min="0" step="any" value={draft.qty} onChange={(e) => setDraft((s) => ({ ...s, qty: e.target.value }))} placeholder="weight" style={{ ...inpS, flex: "0 0 80px" }} />
+            <select value={draft.unit} onChange={(e) => setDraft((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+            <input type="date" value={draft.date} onChange={(e) => setDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+            <input value={draft.note} onChange={(e) => setDraft((s) => ({ ...s, note: e.target.value }))} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
+            <button onClick={add} style={{ ...btn(C.harvest), flex: "0 0 auto" }}><Plus size={14} /> Add</button>
+          </div>
+        </>}
+      </div>
+
+      <div style={{ ...card }}>
+        <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Meat log</strong>
+        {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: "8px 0 0" }}>Nothing yet. Cull an animal for meat in the Animals tab, or add an entry above.</p>
+        : <><div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+            {entries.map((e) => (
+              <div key={e.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <input type="date" value={e.date || ""} onChange={(ev) => edit(e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
+                  <span style={{ fontSize: 13 }}>{SPECIES[e.species]?.emoji || "🥩"}</span>
+                  <input type="number" min="0" step="any" value={e.qty ?? ""} onChange={(ev) => edit(e.id, { qty: ev.target.value === "" ? null : Number(ev.target.value) })} placeholder="weight" style={{ ...inpS, flex: "0 0 70px" }} />
+                  <select value={e.unit || "kg"} onChange={(ev) => edit(e.id, { unit: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                  <span style={{ flex: 1 }} />
+                  <button onClick={() => remove(e.id)} style={iconBtn}><Trash2 size={13} /></button>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}><strong style={{ color: C.ink, fontWeight: 600 }}>{e.animal}</strong>{e.klass ? ` · ${e.klass}` : ""} · {SPECIES[e.species]?.label || e.species}</div>
+                <input value={e.note || ""} onChange={(ev) => edit(e.id, { note: ev.target.value || undefined })} placeholder="add a comment…" style={{ ...inpS, fontSize: 12, color: C.muted }} />
+              </div>))}
+          </div>
+          <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Total: {Object.entries(byUnit).map(([u, q]) => `${q} ${u}`).join(", ")} from {entries.length} animal{entries.length === 1 ? "" : "s"}. Edit or remove any entry in place — removing one keeps the animal archived as culled.</p></>}
+      </div>
     </div>
   );
 }
@@ -4128,6 +4209,8 @@ function ReportView({ data, setData, month, hemi, display }) {
   const birdCost = buysW.reduce((n, x) => n + (x.cost || 0), 0); const birdsBought = buysW.reduce((n, x) => n + (x.birds || 0), 0);
   const birdRevenue = birdSalesW.reduce((n, x) => n + (x.amount || 0), 0); const birdsSold = birdSalesW.reduce((n, x) => n + (x.birds || 0), 0);
   const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
+  const meatW = (data.meatLog || []).filter(inWin);
+  const meatByUnit = {}; meatW.forEach((x) => { const u = x.unit || "kg"; meatByUnit[u] = Math.round(((meatByUnit[u] || 0) + (Number(x.qty) || 0)) * 100) / 100; });
   const costPerEgg = eggsLaid > 0 ? feedCost / eggsLaid : null; const keptCost = costPerEgg != null ? eggsKept * costPerEgg : null;
   const totalIn = revenue + birdRevenue; const totalOut = feedCost + birdCost; const net = totalIn - totalOut;
   const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length || birdSalesW.length;
@@ -4252,12 +4335,13 @@ function ReportView({ data, setData, month, hemi, display }) {
           expandable open={cardOpen("animals")} onToggle={() => setOpenCard(openCard === "animals" ? null : "animals")}>
           {allMobs.length ? Object.entries(bySpeciesStock).map(([sp, ms]) => { const head = ms.reduce((n, m) => n + mobHead(m), 0);
             return <div key={sp} style={row}>{stockLib[sp]?.emoji} <strong>{stockLib[sp]?.label}</strong>: {head} — {ms.map((m) => `${mobHead(m)} ${m.klass} (${m.area})`).join(", ")}</div>; }) : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No animals recorded.</p>}
-          {Object.keys(products).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
-            {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}</>}
+          {(Object.keys(products).length > 0 || meatW.length > 0) && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
+            {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}
+            {meatW.length > 0 && <div style={row}>🥩 <strong>Meat</strong>: {Object.entries(meatByUnit).map(([u, q]) => `${q} ${u}`).join(", ")} <span style={{ color: C.muted }}>· {meatW.length} animal{meatW.length === 1 ? "" : "s"}</span></div>}</>}
           {treatList.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Treatments &amp; events · {windowLabel}</div>
             {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon || (t.type === "task" ? "✅" : "•")} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label || (t.type === "task" ? "Planned job" : t.type)}{t.what && t.what !== STOCK_LOG[t.type]?.label ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
           {(data.archive || []).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Past animals</div>
-            {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : "❌ died"} {fmtDate(a.archived)}</div>)}</>}
+            {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : a.status === "culled" ? `🥩 culled${a.meat ? ` · ${a.meat.qty} ${a.meat.unit}` : ""}` : "❌ died"} {fmtDate(a.archived)}</div>)}</>}
         </StatCard>}
 
         {hasChooks && <StatCard icon="💰" label={`Net · ${windowLabel}`} value={money(net)} accent={net >= 0 ? C.fern : C.beet}
