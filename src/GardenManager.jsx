@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 108";
+const APP_BUILD = "2026-06-25 · build 109";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -967,21 +967,27 @@ export default function GardenManager() {
 // ===================== drag hook ==================================
 function useDrag(containerRef, applyPatch) {
   const ref = useRef(null);
+  const movedRef = useRef(false);
   const onPointerDown = (e, item, mode) => {
     e.stopPropagation();
     const rect = containerRef.current.getBoundingClientRect();
-    ref.current = { id: item.id, mode, rect, sx: e.clientX, sy: e.clientY, x: item.x, y: item.y, w: item.w ?? 0, h: item.h ?? 0 };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    ref.current = { id: item.id, mode, rect, sx: e.clientX, sy: e.clientY, x: item.x, y: item.y, w: item.w ?? 0, h: item.h ?? 0, pid: e.pointerId, active: false };
+    movedRef.current = false;
+    // capture on the container (stable node) so the drag survives re-renders mid-move on touch
+    containerRef.current.setPointerCapture?.(e.pointerId);
   };
   const onPointerMove = (e) => {
     const d = ref.current; if (!d) return;
-    const dx = ((e.clientX - d.sx) / d.rect.width) * 100;
-    const dy = ((e.clientY - d.sy) / d.rect.height) * 100;
+    const pdx = e.clientX - d.sx, pdy = e.clientY - d.sy;
+    if (!d.active && Math.hypot(pdx, pdy) < 5) return; // ignore tiny jitter so a tap stays a tap
+    d.active = true; movedRef.current = true;
+    const dx = (pdx / d.rect.width) * 100;
+    const dy = (pdy / d.rect.height) * 100;
     if (d.mode === "move") applyPatch(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
     else applyPatch(d.id, { w: clamp(d.w + dx, 8, 100 - d.x), h: clamp(d.h + dy, 8, 100 - d.y) });
   };
-  const onPointerUp = () => { ref.current = null; };
-  return { onPointerDown, onPointerMove, onPointerUp };
+  const onPointerUp = () => { const d = ref.current; if (d && containerRef.current) containerRef.current.releasePointerCapture?.(d.pid); ref.current = null; setTimeout(() => { movedRef.current = false; }, 0); };
+  return { onPointerDown, onPointerMove, onPointerUp, moved: () => movedRef.current };
 }
 
 // ===================== date slider ================================
@@ -1217,14 +1223,14 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
             <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
-              onClick={editMode ? (e) => { e.stopPropagation(); setEditSel(s.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
+              onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(s.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
                 <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
-                {editMode && !s.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: 2, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>}
+                {editMode && !s.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: "6px 6px 2px 12px", margin: "-6px -4px -2px 0", fontSize: 15, lineHeight: 1, touchAction: "none", textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>}
               </div>
             </div>
           ); })}
@@ -1478,8 +1484,8 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               return (
                 <div key={b.id}
                   onPointerDown={editMode ? (e) => drag.onPointerDown(e, b, "move") : undefined}
-                  onClick={editMode ? (e) => { e.stopPropagation(); setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
+                  onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span></div>
                   <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n]; const planned = bedPlantings(b).map(plantingAsCell).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
@@ -1493,28 +1499,28 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                     <span style={{ fontSize: 9.5, opacity: .95, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {free}/{total} free{dim ? ` · ${dim}` : ""}{fam ? ` · ${GROUP_LABEL[rotationNextGroup(fam)]} next` : ""}
                     </span>
-                    {editMode && !b.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 12, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.6)", flexShrink: 0 }}>⌟</span>}
+                    {editMode && !b.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 15, lineHeight: 1, color: "#fff", padding: "6px 4px 2px 12px", margin: "-6px -2px -2px 0", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,.6)", flexShrink: 0 }}>⌟</span>}
                   </div>
                 </div>); })}
 
             {!usesBeds && (section.plants || []).filter((p) => visibleAt(p, viewDate)).map((p) => { const on = editMode ? editSel === p.id : selPlant?.id === p.id;
               const canopy = lib.color(p.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
-              const select = editMode ? (e) => { e.stopPropagation(); setEditSel(p.id); } : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
+              const select = editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(p.id); } : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
               const down = editMode ? (e) => drag.onPointerDown(e, p, "move") : undefined;
               if (p.shape === "hedge") {
                 const w = p.w ?? 30, h = p.h ?? 8;
                 return (
                   <div key={p.id} onPointerDown={down} onClick={select}
-                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
+                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
                     <span style={{ fontSize: 10.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 8px" }}>{p.plant} hedge</span>
-                    {editMode && !p.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, p, "resize")} style={{ position: "absolute", right: 2, bottom: 0, cursor: "nwse-resize", fontSize: 12, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>⌟</span>}
+                    {editMode && !p.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, p, "resize")} style={{ position: "absolute", right: 0, bottom: 0, cursor: "nwse-resize", fontSize: 15, lineHeight: 1, color: "#fff", padding: "6px 4px 4px 12px", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>⌟</span>}
                   </div>);
               }
               const isBush = p.icon === "bush" || p.icon === "cane";
               const dia = p.dia ?? (isBush ? 8 : 12);
               return (
                 <div key={p.id} onPointerDown={down} onClick={select}
-                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer" }}>
+                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto" }}>
                   <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${on ? "#fff" : ring}`, boxShadow: on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
