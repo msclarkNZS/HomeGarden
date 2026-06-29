@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 106";
+const APP_BUILD = "2026-06-25 · build 107";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -3607,47 +3607,101 @@ function HarvestCareView({ data, setData, display }) {
 }
 
 function MeatLogger({ data, setData, display }) {
-  const speciesList = [...new Set((data.meatLog || []).map((x) => x.species))];
-  const mobSpecies = [...new Set(data.sections.flatMap((s) => (s.mobs || []).map((m) => m.species)))];
-  const addSp = mobSpecies[0] || speciesList[0] || "sheep";
-  const [draft, setDraft] = useState({ animal: "", species: addSp, qty: "", unit: "kg", date: todayISO(), note: "" });
+  const livingBySpecies = {};
+  data.sections.forEach((s) => (s.mobs || []).forEach((m) => (m.individuals || []).forEach((a) => {
+    (livingBySpecies[m.species] = livingBySpecies[m.species] || []).push({ sectionId: s.id, mobId: m.id, aId: a.id, name: a.name, klass: a.klass || m.klass, area: s.name, species: m.species });
+  })));
+  const haveAnimals = Object.keys(livingBySpecies).length > 0;
   const [showAdd, setShowAdd] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [pickSp, setPickSp] = useState(null);
+  const [selInd, setSelInd] = useState(null);
+  const [draft, setDraft] = useState({ animal: "", species: Object.keys(livingBySpecies)[0] || "sheep", qty: "", unit: "kg", date: todayISO(), note: "" });
+
   const edit = (id, patch) => setData((d) => ({ ...d, meatLog: (d.meatLog || []).map((x) => x.id !== id ? x : { ...x, ...patch }) }));
   const remove = (id) => setData((d) => ({ ...d, meatLog: (d.meatLog || []).filter((x) => x.id !== id) }));
-  const add = () => { if (draft.qty === "" && !draft.animal.trim()) return;
-    const entry = { id: uid(), date: draft.date || todayISO(), species: draft.species, klass: null, animal: draft.animal.trim() || "Animal", qty: draft.qty === "" ? null : Number(draft.qty), unit: draft.unit, note: draft.note.trim() || undefined };
-    setData((d) => ({ ...d, meatLog: [...(d.meatLog || []), entry] })); setDraft((s) => ({ ...s, animal: "", qty: "", note: "" })); setShowAdd(false); };
+
+  const cullIndividual = (ind, meat) => setData((d) => {
+    let rec = null;
+    const sections = d.sections.map((s) => { if (s.id !== ind.sectionId) return s;
+      return { ...s, mobs: (s.mobs || []).map((m) => { if (m.id !== ind.mobId) return m;
+        const a = (m.individuals || []).find((x) => x.id === ind.aId);
+        if (a) rec = { ...a, species: m.species, klass: a.klass || m.klass, fromMob: m.name || SPECIES[m.species]?.label, fromArea: s.name, status: "culled", archived: meat.date || todayISO(), meat: (meat.qty !== "" && meat.qty != null && Number(meat.qty) > 0) ? { qty: Number(meat.qty), unit: meat.unit || "kg" } : undefined };
+        return { ...m, individuals: (m.individuals || []).filter((x) => x.id !== ind.aId) }; }) }; });
+    if (!rec) return d;
+    const meatEntry = (meat.qty !== "" && meat.qty != null && Number(meat.qty) > 0) ? { id: uid(), date: meat.date || todayISO(), species: rec.species, klass: rec.klass, animal: rec.name, qty: Number(meat.qty), unit: meat.unit || "kg", note: meat.note?.trim() || undefined } : null;
+    return { ...d, sections: pruneEmptyMobs(sections), archive: [...(d.archive || []), rec], meatLog: meatEntry ? [...(d.meatLog || []), meatEntry] : (d.meatLog || []) };
+  });
+
+  const resetAdd = () => { setShowAdd(false); setManual(false); setPickSp(null); setSelInd(null); setDraft((s) => ({ ...s, animal: "", qty: "", note: "" })); };
+  const add = () => {
+    if (!manual && selInd) { cullIndividual(selInd, { qty: draft.qty, unit: draft.unit, date: draft.date, note: draft.note }); resetAdd(); return; }
+    if (manual) { if (draft.qty === "" && !draft.animal.trim()) return;
+      const entry = { id: uid(), date: draft.date || todayISO(), species: draft.species, klass: null, animal: draft.animal.trim() || "Animal", qty: draft.qty === "" ? null : Number(draft.qty), unit: draft.unit, note: draft.note.trim() || undefined };
+      setData((d) => ({ ...d, meatLog: [...(d.meatLog || []), entry] })); resetAdd(); }
+  };
+
   const entries = [...(data.meatLog || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const byUnit = {}; entries.forEach((x) => { const u = x.unit || "kg"; byUnit[u] = Math.round(((byUnit[u] || 0) + (Number(x.qty) || 0)) * 100) / 100; });
+  const chipSel = (on) => ({ ...chip, cursor: "pointer", padding: "5px 11px", background: on ? C.fern : "#fff", color: on ? "#fff" : C.ink, border: `1px solid ${on ? C.fern : C.line}` });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ ...card, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
-        Meat is recorded when you <strong>cull an animal for meat</strong> — open the Animals tab, tap an animal, and choose <strong>🥩 Cull for meat</strong>. Culled animals and their weights gather here and in the report. You can also add a one-off entry below.
+        Meat is recorded when you <strong>cull an animal for meat</strong>. Pick the animal below (or in the Animals tab), enter the weight, and it's archived as culled and added to the log &amp; report.
       </div>
 
       <div style={{ ...card }}>
-        {!showAdd ? <button onClick={() => setShowAdd(true)} style={{ ...btnOutline(C.harvest), width: "100%", justifyContent: "center" }}><Plus size={14} /> Add a meat entry</button>
+        {!showAdd ? <button onClick={() => setShowAdd(true)} style={{ ...btnOutline(C.harvest), width: "100%", justifyContent: "center" }}><Plus size={14} /> Cull an animal / add meat</button>
         : <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Add meat</strong>
-            <button onClick={() => setShowAdd(false)} style={iconBtn}><X size={16} /></button>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Cull for meat</strong>
+            <button onClick={resetAdd} style={iconBtn}><X size={16} /></button>
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <input value={draft.animal} onChange={(e) => setDraft((s) => ({ ...s, animal: e.target.value }))} placeholder="animal / label" style={{ ...inpS, flex: "1 1 110px" }} />
-            <select value={draft.species} onChange={(e) => setDraft((s) => ({ ...s, species: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{Object.entries(SPECIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
-            <input type="number" min="0" step="any" value={draft.qty} onChange={(e) => setDraft((s) => ({ ...s, qty: e.target.value }))} placeholder="weight" style={{ ...inpS, flex: "0 0 80px" }} />
-            <select value={draft.unit} onChange={(e) => setDraft((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
-            <input type="date" value={draft.date} onChange={(e) => setDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
-            <input value={draft.note} onChange={(e) => setDraft((s) => ({ ...s, note: e.target.value }))} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
-            <button onClick={add} style={{ ...btn(C.harvest), flex: "0 0 auto" }}><Plus size={14} /> Add</button>
-          </div>
+
+          {!manual ? (<>
+            {!haveAnimals ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No animals recorded to pick from. <button onClick={() => setManual(true)} style={linkBtn}>Add a one-off entry</button> instead.</p>
+            : <>
+              <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, marginBottom: 5 }}>ANIMAL TYPE</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {Object.keys(livingBySpecies).map((sp) => <button key={sp} onClick={() => { setPickSp(sp); setSelInd(null); }} style={chipSel(pickSp === sp)}>{SPECIES[sp]?.emoji} {SPECIES[sp]?.label} ({livingBySpecies[sp].length})</button>)}
+              </div>
+              {pickSp && <>
+                <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, marginBottom: 5 }}>ANIMAL</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  {livingBySpecies[pickSp].map((ind) => <button key={ind.aId} onClick={() => setSelInd(ind)} style={chipSel(selInd?.aId === ind.aId)}>{ind.name} <span style={{ color: selInd?.aId === ind.aId ? "rgba(255,255,255,.8)" : C.muted, fontWeight: 400 }}>· {ind.klass} · {ind.area}</span></button>)}
+                </div>
+              </>}
+              {selInd && <div style={{ padding: 10, borderRadius: 9, background: hexA(C.harvest, .08), border: `1px solid ${hexA(C.harvest, .4)}` }}>
+                <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>Culling <span style={{ color: C.harvest }}>{selInd.name}</span> — meat weight (optional)</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <input type="number" min="0" step="any" value={draft.qty} onChange={(e) => setDraft((s) => ({ ...s, qty: e.target.value }))} placeholder="weight" style={{ ...inpS, flex: "1 1 80px" }} />
+                  <select value={draft.unit} onChange={(e) => setDraft((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                  <input type="date" value={draft.date} onChange={(e) => setDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+                  <input value={draft.note} onChange={(e) => setDraft((s) => ({ ...s, note: e.target.value }))} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
+                </div>
+                <button onClick={add} style={{ ...btn(C.harvest), marginTop: 8, width: "100%", justifyContent: "center" }}><Check size={14} /> Confirm cull</button>
+              </div>}
+              <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}><button onClick={() => { setManual(true); setSelInd(null); setPickSp(null); }} style={linkBtn}>or log a one-off label</button> (for an animal that isn't in your list)</p>
+            </>}
+          </>) : (<>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <input value={draft.animal} onChange={(e) => setDraft((s) => ({ ...s, animal: e.target.value }))} placeholder="animal / label" style={{ ...inpS, flex: "1 1 110px" }} />
+              <select value={draft.species} onChange={(e) => setDraft((s) => ({ ...s, species: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{Object.entries(SPECIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
+              <input type="number" min="0" step="any" value={draft.qty} onChange={(e) => setDraft((s) => ({ ...s, qty: e.target.value }))} placeholder="weight" style={{ ...inpS, flex: "0 0 80px" }} />
+              <select value={draft.unit} onChange={(e) => setDraft((s) => ({ ...s, unit: e.target.value }))} style={{ ...inpS, flex: "0 0 auto", width: "auto" }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+              <input type="date" value={draft.date} onChange={(e) => setDraft((s) => ({ ...s, date: e.target.value }))} style={{ ...inpS, flex: "1 1 120px", fontSize: 12 }} />
+              <input value={draft.note} onChange={(e) => setDraft((s) => ({ ...s, note: e.target.value }))} placeholder="note (optional)" style={{ ...inpS, flex: "1 1 120px" }} />
+              <button onClick={add} style={{ ...btn(C.harvest), flex: "0 0 auto" }}><Plus size={14} /> Add</button>
+            </div>
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>A one-off entry doesn't archive an animal. {haveAnimals ? <button onClick={() => setManual(false)} style={linkBtn}>back to picking an animal</button> : null}</p>
+          </>)}
         </>}
       </div>
 
       <div style={{ ...card }}>
         <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Meat log</strong>
-        {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: "8px 0 0" }}>Nothing yet. Cull an animal for meat in the Animals tab, or add an entry above.</p>
+        {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: "8px 0 0" }}>Nothing yet. Cull an animal for meat above or in the Animals tab.</p>
         : <><div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
             {entries.map((e) => (
               <div key={e.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
