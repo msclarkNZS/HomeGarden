@@ -341,7 +341,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 104";
+const APP_BUILD = "2026-06-25 · build 105";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -3598,6 +3598,18 @@ function PlantLogger({ data, setData, display }) {
   const [care, setCare] = useState({ note: "", date: todayISO() });
   const [showPick, setShowPick] = useState(false);
   const [pick, setPick] = useState({ crop: "", sel: {}, qty: "", unit: "handful", note: "", date: todayISO() });
+  const [showLog, setShowLog] = useState(false);
+  const [logFilter, setLogFilter] = useState("all");
+  const editHarv = (e, patch) => setData((d) => {
+    if (e.src === "mixed") return { ...d, harvests: (d.harvests || []).map((h) => h.id !== e.id ? h : { ...h, ...patch }) };
+    return { ...d, sections: d.sections.map((s) => { if (s.id !== e.sectionId) return s;
+      if (e.src === "bed") return { ...s, beds: (s.beds || []).map((b) => b.id !== e.bedId ? b : { ...b, plantings: (b.plantings || []).map((p) => p.id !== e.itemId ? p : { ...p, ferts: (p.ferts || []).map((f) => f.id !== e.fertId ? f : { ...f, ...patch }) }) }) };
+      return { ...s, plants: (s.plants || []).map((p) => p.id !== e.itemId ? p : { ...p, ferts: (p.ferts || []).map((f) => f.id !== e.fertId ? f : { ...f, ...patch }) }) }; }) }; });
+  const removeHarv = (e) => setData((d) => {
+    if (e.src === "mixed") return { ...d, harvests: (d.harvests || []).filter((h) => h.id !== e.id) };
+    return { ...d, sections: d.sections.map((s) => { if (s.id !== e.sectionId) return s;
+      if (e.src === "bed") return { ...s, beds: (s.beds || []).map((b) => b.id !== e.bedId ? b : { ...b, plantings: (b.plantings || []).map((p) => p.id !== e.itemId ? p : { ...p, ferts: (p.ferts || []).filter((f) => f.id !== e.fertId) }) }) };
+      return { ...s, plants: (s.plants || []).map((p) => p.id !== e.itemId ? p : { ...p, ferts: (p.ferts || []).filter((f) => f.id !== e.fertId) }) }; }) }; });
 
   const addToPlanting = (sectionId, bedId, pid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, beds: (s.beds || []).map((b) => b.id !== bedId ? b : { ...b, plantings: (b.plantings || []).map((p) => p.id !== pid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }) }));
   const addToMarker = (sectionId, mid, entry) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sectionId ? s : { ...s, plants: (s.plants || []).map((p) => p.id !== mid ? p : { ...p, ferts: [...(p.ferts || []), entry] }) }) }));
@@ -3681,6 +3693,47 @@ function PlantLogger({ data, setData, display }) {
             </>}
           </div>
         )}
+      </div>
+
+      <div style={{ ...card }}>
+        {!showLog ? <button onClick={() => setShowLog(true)} style={{ ...btnOutline(C.fern), width: "100%", justifyContent: "center" }}><FileText size={14} /> View / edit harvest log</button>
+        : (() => {
+          const out = [];
+          data.sections.forEach((s) => { const uses = SECTION_KINDS[s.kind]?.uses;
+            if (uses === "beds") (s.beds || []).forEach((b) => bedPlantings(b).forEach((p) => (p.ferts || []).forEach((f) => { if (f.type === "harvest") out.push({ src: "bed", sectionId: s.id, bedId: b.id, itemId: p.id, fertId: f.id, plant: p.plant, where: `${b.name} · ${s.name}`, date: f.date, qty: f.qty, unit: f.unit, what: f.what }); })));
+            else if (uses === "plants") (s.plants || []).forEach((p) => (p.ferts || []).forEach((f) => { if (f.type === "harvest") out.push({ src: "marker", sectionId: s.id, itemId: p.id, fertId: f.id, plant: p.plant, where: s.name, date: f.date, qty: f.qty, unit: f.unit, what: f.what }); })); });
+          (data.harvests || []).forEach((h) => { const sn = h.section ? data.sections.find((s) => s.id === h.section)?.name : null; out.push({ src: "mixed", id: h.id, plant: h.plant, where: sn ? `mixed · ${sn}` : "mixed / any bed", date: h.date, qty: h.qty, unit: h.unit, what: h.what }); });
+          out.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+          const crops = [...new Set(out.map((e) => e.plant).filter(Boolean))].sort();
+          const entries = logFilter === "all" ? out : out.filter((e) => e.plant === logFilter);
+          const totalPicks = out.length;
+          return (<>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <strong style={{ fontSize: 13.5, color: C.fernDk }}>🧺 Harvest log</strong>
+              <button onClick={() => setShowLog(false)} style={iconBtn}><X size={16} /></button>
+            </div>
+            {crops.length > 1 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
+              <button onClick={() => setLogFilter("all")} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: logFilter === "all" ? C.fern : C.panel2, color: logFilter === "all" ? "#fff" : C.muted, border: `1px solid ${logFilter === "all" ? C.fern : C.line}` }}>All ({out.length})</button>
+              {crops.map((c) => { const n = out.filter((e) => e.plant === c).length; return <button key={c} onClick={() => setLogFilter(c)} style={{ ...chip, cursor: "pointer", padding: "4px 10px", background: logFilter === c ? C.fern : C.panel2, color: logFilter === c ? "#fff" : C.muted, border: `1px solid ${logFilter === c ? C.fern : C.line}` }}>{c} ({n})</button>; })}
+            </div>}
+            {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>{out.length === 0 ? "Nothing harvested yet. Log a pick above and it'll appear here." : "No picks of this crop."}</p>
+            : <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {entries.map((e) => (
+                  <div key={e.src + (e.fertId || e.id)} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <input type="date" value={e.date || ""} onChange={(ev) => editHarv(e, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
+                      <span style={{ fontSize: 13 }}>🧺</span>
+                      <input type="number" min="0" step="any" value={e.qty ?? ""} onChange={(ev) => editHarv(e, { qty: ev.target.value === "" ? null : Number(ev.target.value) })} placeholder="qty" style={{ ...inpS, flex: "0 0 64px" }} />
+                      <select value={e.unit || "handful"} onChange={(ev) => editHarv(e, { unit: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{H_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                      <span style={{ flex: 1 }} />
+                      <button onClick={() => removeHarv(e)} style={iconBtn}><Trash2 size={13} /></button>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted }}><strong style={{ color: C.ink, fontWeight: 600 }}>{e.plant}</strong> · {e.where}</div>
+                    <input value={e.what || ""} onChange={(ev) => editHarv(e, { what: ev.target.value || undefined })} placeholder="add a comment…" style={{ ...inpS, fontSize: 12, color: C.muted }} />
+                  </div>))}
+              </div>}
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Edit any date, amount or note in place — changes save straight away. {totalPicks} pick{totalPicks === 1 ? "" : "s"} logged in total.</p>
+          </>); })()}
       </div>
       {areas.map((s) => { const k = SECTION_KINDS[s.kind]; const KI = k.icon; const on = openArea === s.id; const usesBeds = SECTION_KINDS[s.kind].uses === "beds";
         const plantCount = usesBeds ? (s.beds || []).reduce((n, b) => n + bedPlantings(b).filter((p) => !plantingRemoved(p)).length, 0) : (s.plants || []).length;
