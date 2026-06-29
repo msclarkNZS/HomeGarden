@@ -174,7 +174,8 @@ const FRUIT = [
   { name:"Nashi pear", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Feb–Mar", hmon:[2,3], prune:"Winter, while dormant", feed:"Compost early spring", note:"Thin hard in spring — they over-set. Pick when they part easily from the spur.", tasks:[{name:"Winter prune",months:[7]},{name:"Thin fruit",months:[10,11]},{name:"Feed",months:[9]}] },
   { name:"Quince", group:"Pip fruit", plant:"Bare-root Jun–Aug", harvest:"Apr–May", hmon:[4,5], prune:"Winter, lightly", feed:"Compost early spring", note:"Hardy and ornamental; fruit needs cooking. Leave to ripen fully gold.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
   { name:"Plum", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"Summer, after fruiting (not wet winter)", feed:"Compost early spring", note:"Summer pruning avoids silver leaf. Copper at bud-swell.", tasks:[{name:"Summer prune",months:[1,2]},{name:"Copper spray (bud-swell)",months:[8]},{name:"Feed",months:[9]}] },
-  { name:"Peach / Nectarine", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"After harvest, late summer", feed:"Compost + potash spring", note:"Copper + oil at bud-swell for leaf curl — timing is everything.", tasks:[{name:"Copper + oil for leaf curl",months:[7,8]},{name:"Prune after harvest",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Peach", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"After harvest, late summer", feed:"Compost + potash spring", note:"Copper + oil at bud-swell for leaf curl — timing is everything.", tasks:[{name:"Copper + oil for leaf curl",months:[7,8]},{name:"Prune after harvest",months:[2,3]},{name:"Feed",months:[9]}] },
+  { name:"Nectarine", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Feb", hmon:[12,1,2], prune:"After harvest, late summer", feed:"Compost + potash spring", note:"Like peaches, prone to leaf curl — copper + oil at bud-swell is the key spray.", tasks:[{name:"Copper + oil for leaf curl",months:[7,8]},{name:"Prune after harvest",months:[2,3]},{name:"Feed",months:[9]}] },
   { name:"Apricot", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Jan", hmon:[12,1], prune:"Dry summer weather", feed:"Compost early spring", note:"Needs a sheltered, sunny spot.", tasks:[{name:"Prune in dry weather",months:[1,2]},{name:"Feed",months:[9]}] },
   { name:"Cherry", group:"Stone fruit", plant:"Bare-root Jun–Aug", harvest:"Dec–Jan", hmon:[12,1], prune:"Summer, after fruiting", feed:"Compost early spring", note:"Net against birds as they colour. Prune only in dry summer weather.", tasks:[{name:"Summer prune",months:[1,2]},{name:"Net against birds",months:[11,12]},{name:"Feed",months:[9]}] },
   { name:"Almond", group:"Nut", plant:"Bare-root Jun–Aug", harvest:"Feb–Mar", hmon:[2,3], prune:"After harvest", feed:"Compost early spring", note:"Flowers very early — a frost in bloom costs the crop. Give it the warmest spot.", tasks:[{name:"Prune after harvest",months:[3]},{name:"Feed",months:[9]}] },
@@ -190,7 +191,8 @@ const FRUIT = [
   { name:"Lemonade", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Sweeter than a lemon, eaten fresh; among the hardier citrus.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[3]}] },
   { name:"Lime", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[4,5,6,7], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"The most frost-tender citrus — warm sheltered wall or a pot you can move.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Frost protection",months:[6,7]}] },
   { name:"Kaffir lime", group:"Citrus", plant:"Spring", harvest:"Leaves year-round", hmon:[], prune:"Pinch to shape", feed:"Citrus food spring & late summer", note:"Grown for its fragrant double leaves; very frost-tender, so a pot is ideal.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Frost protection",months:[6,7]}] },
-  { name:"Mandarin / Orange", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Warm, north-facing, sheltered spot is best.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[9]}] },
+  { name:"Mandarin", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Warm, north-facing, sheltered spot is best. Easy-peel and reliably sweet.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[9]}] },
+  { name:"Orange", group:"Citrus", plant:"Spring", harvest:"Winter–spring", hmon:[6,7,8,9], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Warm, north-facing, sheltered spot is best. Holds on the tree well once ripe.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[9]}] },
   { name:"Grapefruit", group:"Citrus", plant:"Spring", harvest:"Winter–spring", hmon:[7,8,9], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Big tree, long-hanging fruit that sweetens the longer it stays on.", tasks:[{name:"Citrus feed",months:[9,2]}] },
   { name:"Grape", group:"Vine", plant:"Winter (dormant)", harvest:"Mar–Apr", hmon:[3,4], prune:"Winter, while dormant", feed:"Compost early spring", note:"Needs a sturdy frame and a sunny wall; trim leaves in summer for airflow.", tasks:[{name:"Winter prune",months:[7]},{name:"Summer trim & thin",months:[12,1]},{name:"Feed",months:[9]}] },
   { name:"Passionfruit", group:"Vine", plant:"Spring", harvest:"Mar–May", hmon:[3,4,5], prune:"Spring", feed:"Citrus/general fertiliser spring & summer", note:"Short-lived, frost-tender vine — give it a strong fence and replace every few years.", tasks:[{name:"Spring prune",months:[9]},{name:"Feed",months:[9,12]}] },
@@ -311,7 +313,6 @@ const STOCK_LOG = {
   sold: { label: "Sold", icon: "🏷️", count: true },
   note: { label: "Note", icon: "📝" },
 };
-const STOCK_PRODUCTS = ["eggs", "milk", "wool", "meat"];
 // suggested transient states per species (you can add your own too)
 const STOCK_STATES = {
   sheep:   ["In-lamb", "Lambing", "Lame", "Flystruck", "Unwell", "Bottle/orphan"],
@@ -341,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 107";
+const APP_BUILD = "2026-06-25 · build 108";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -399,12 +400,14 @@ function normalize(d) {
       customPlants: { veg: [], fruit: [], berry: [], ...(d.customPlants || {}) }, plantEdits: d.plantEdits || {}, harvests: d.harvests || [], meatLog: d.meatLog || [] };
   }
   // migrate each bed from one-crop-per-cell into grouped plantings on a 0.25 m grid; migrate counted mobs into named animals
+  const FRUIT_RENAME = { "Peach / Nectarine": "Peach", "Mandarin / Orange": "Mandarin" };
   base.sections = base.sections.map((s) => { const sr = realOf(s.w, s.h, base.dimM);
     return { ...s, beds: (s.beds || []).map((b) => {
       if (b.plantings) return b;
       const grid = bedFineGrid(b, realOf(b.w, b.h, sr));
       return { ...b, plantings: cellsToPlantings(b, grid), grid: { w: grid.gw, h: grid.gh }, sq: grid.sq };
     }),
+    plants: (s.plants || []).map((p) => FRUIT_RENAME[p.plant] ? { ...p, plant: FRUIT_RENAME[p.plant] } : p),
     mobs: (s.mobs || []).map((m) => {
       const species = SP_MIGRATE[m.species] || m.species; const fixK = (k) => species === "chicken" ? (CHICKEN_KLASS_FIX[k] || k) : k;
       if (Array.isArray(m.individuals) && m.individuals.length) { const { count, ...rest } = m; return { ...rest, species, klass: fixK(m.klass), individuals: m.individuals.map((a) => ({ ...a, klass: fixK(a.klass) })) }; }
@@ -414,6 +417,7 @@ function normalize(d) {
     }) };
   });
   base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
+  base.harvests = (base.harvests || []).map((h) => FRUIT_RENAME[h.plant] ? { ...h, plant: FRUIT_RENAME[h.plant] } : h);
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
   // Areas show a live crop of the property photo; older builds saved a per-area image.
@@ -518,13 +522,7 @@ function harvestedCrops(data) {
 }
 
 // total "what you planted" for a crop across all its plantings (by unit)
-function cropSownTotals(data, name) {
-  const tot = {};
-  (data.sections || []).forEach((s) => (s.beds || []).forEach((b) => bedPlantings(b).forEach((p) => {
-    if (p.plant === name && p.sown && p.sown.qty != null) { const u = p.sown.unit || "plants"; tot[u] = Math.round(((tot[u] || 0) + p.sown.qty) * 100) / 100; }
-  })));
-  return Object.entries(tot).map(([u, q]) => `${q} ${u}`).join(", ");
-}
+
 
 function buildLibrary(data) {
   const edits = data.plantEdits || {};
@@ -1597,17 +1595,6 @@ function PlantQuickLook({ plant, reason, month }) {
   );
 }
 
-function PlantGlyph({ icon }) {
-  if (icon === "bush" || icon === "cane") {
-    return (<svg width="34" height="34" viewBox="0 0 34 34"><g>
-      <circle cx="11" cy="20" r="8" fill="#5E7E4E" /><circle cx="22" cy="19" r="8" fill="#4F6E40" /><circle cx="17" cy="13" r="8" fill="#6E8B5A" />
-      {icon === "cane" ? <><circle cx="11" cy="20" r="2" fill="#A23E55" /><circle cx="22" cy="22" r="2" fill="#A23E55" /></> : <><circle cx="14" cy="16" r="1.8" fill="#3a5d8f" /><circle cx="21" cy="18" r="1.8" fill="#3a5d8f" /></>}
-    </g></svg>);
-  }
-  return (<svg width="34" height="40" viewBox="0 0 34 40"><rect x="15" y="22" width="4" height="16" rx="1.5" fill="#7A5A3F" />
-    <circle cx="17" cy="14" r="11" fill="#4F6E40" /><circle cx="10" cy="18" r="7" fill="#5E7E4E" /><circle cx="24" cy="18" r="7" fill="#5E7E4E" /><circle cx="17" cy="10" r="7" fill="#6E8B5A" /></svg>);
-}
-
 // ===================== bed grid (split crops) =====================
 function StockPage({ data, setData, display, focusId, onBack }) {
   const areas = data.sections.filter((s) => SECTION_KINDS[s.kind].uses === "stock");
@@ -1749,12 +1736,6 @@ function AreaStock({ data, setData, section, display }) {
       if (m.id !== mobId) return m;
       if (animalId) return { ...m, individuals: (m.individuals || []).map((a) => a.id !== animalId ? a : { ...a, ferts: (a.ferts || []).filter((f) => f.id !== id) }) };
       return { ...m, ferts: (m.ferts || []).filter((f) => f.id !== id) }; }) }) }));
-  const addIndividual = (mobId) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
-      if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id: uid(), name: `${m.klass} ${list.length + 1}`, klass: m.klass, breed: m.breed || "", born: "", notes: "", ferts: [] };
-      return { ...m, individuals: [...list, a] }; }) }) }));
-  const addChick = (mobId) => { const id = uid(); setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => {
-      if (m.id !== mobId) return m; const list = m.individuals || []; const a = { id, name: `Chick ${list.length + 1}`, klass: "Chick", breed: "", born: todayISO(), notes: "", ferts: [] };
-      return { ...m, individuals: [...list, a] }; }) }) })); setOpenAnimal(id); };
   const patchIndividual = (mobId, aId, patch) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).map((a) => a.id !== aId ? a : { ...a, ...patch }) }) }) }));
   const removeIndividual = (mobId, aId) => { setData((d) => ({ ...d, sections: pruneEmptyMobs(d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).map((m) => m.id !== mobId ? m : { ...m, individuals: (m.individuals || []).filter((a) => a.id !== aId) }) })) })); setOpenAnimal(null); };
   const moveIndividual = (mobId, aId, toMobId) => { let moved = null;
@@ -2379,14 +2360,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   );
 }
 
-function Stepper({ label, value, onChange }) {
-  return (<span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-    <button onClick={() => onChange(-1)} style={stepBtn}>–</button>
-    <span style={{ minWidth: 44, textAlign: "center", color: C.ink }}>{value} {label}</span>
-    <button onClick={() => onChange(1)} style={stepBtn}>+</button>
-  </span>);
-}
-const stepBtn = { width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.line}`, background: C.panel2, cursor: "pointer", color: C.fern, fontSize: 15, lineHeight: 1, fontWeight: 700 };
+
 
 // ===================== detail panel ==============================
 function DetailPanel({ item, kind, patch, remove, close, display, extra, marker, planContext, secReal, shade, data }) {
@@ -4169,8 +4143,6 @@ function ReportView({ data, setData, month, hemi, display }) {
   const avgWindow = gUnit === "day" ? 7 : gUnit === "week" ? 4 : 3;
   const capN = (arr, n = 370) => arr.length > n ? arr.slice(arr.length - n) : arr;
   const [scope, setScope] = useState("all");
-  const [reportMode, setReportMode] = useState("garden"); // garden | crop
-  const scopeName = scope === "all" ? "the whole property" : (data.sections.find((s) => s.id === scope)?.name || "this area");
 
   // per-crop focus (harvest history + chart + quick log)
   // crops you can report on: anything planted anywhere, plus anything with logged harvests
@@ -4226,7 +4198,6 @@ function ReportView({ data, setData, month, hemi, display }) {
   (data.harvests || []).forEach((h) => { if (scope !== "all" && h.section !== scope) return; const sn = h.section ? (data.sections || []).find((s) => s.id === h.section)?.name : null; const e = { ...h, where: sn ? `mixed · ${sn}` : "mixed / any bed", dk: dayKey(new Date(h.date)) }; log.push(e); harvestLog.push(e); });
   harvests.sort((a, b) => a.dk - b.dk); planned.sort((a, b) => a.dk - b.dk); log.sort((a, b) => b.dk - a.dk);
   const harvestsIn = harvests.filter((h) => h.dk <= limitK);
-  const plannedIn = planned.filter((p) => p.dk <= limitK);
   // harvest journal spans the chosen window (back/forward)
   const harvestBack = harvestLog.filter((f) => f.dk >= winFrom && f.dk <= winTo).sort((a, b) => b.dk - a.dk);
   const harvestByCrop = {};
