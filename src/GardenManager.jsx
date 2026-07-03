@@ -342,13 +342,14 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 113";
+const APP_BUILD = "2026-06-25 · build 114";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayISO = () => isoOf(new Date());
 const fmtDate = (iso) => { if (!iso) return "—"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
-const addDays = (iso, n) => { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-const dayKey = (d) => Math.floor(d.getTime() / 86400000);
+const addDays = (iso, n) => { const d = new Date(iso); d.setDate(d.getDate() + n); return isoOf(d); };
+const dayKey = (d) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /* --- storage layer ---------------------------------------------------------
@@ -1021,7 +1022,7 @@ function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
     <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <Clock size={14} color={C.fern} />
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.fernDk, flex: 1 }}>Viewing: {fmtDate(viewDate.toISOString().slice(0,10))}{isToday ? " (today)" : ""}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.fernDk, flex: 1 }}>Viewing: {fmtDate(isoOf(viewDate))}{isToday ? " (today)" : ""}</span>
         {!isToday && <button onClick={() => setViewDate(new Date())} style={{ ...btn(C.fern), padding: "5px 11px", fontSize: 12.5 }}><Clock size={13} /> Back to today</button>}
       </div>
       <div style={{ position: "relative", height: 10, marginBottom: 1 }}>
@@ -1033,9 +1034,9 @@ function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
       <input type="range" min={min} max={max} value={cur} onChange={(e) => setViewDate(new Date(Number(e.target.value) * 86400000))}
         style={{ width: "100%", accentColor: C.fern }} />
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: C.muted }}>
-        <span>{fmtDate(new Date(min * 86400000).toISOString().slice(0,10))}</span>
+        <span>{fmtDate(isoOf(new Date(min * 86400000)))}</span>
         <span>{markers.length ? "ticks = this bed's plantings & planned changes" : "drag to scrub history & plans"}</span>
-        <span>{fmtDate(new Date(max * 86400000).toISOString().slice(0,10))}</span>
+        <span>{fmtDate(isoOf(new Date(max * 86400000)))}</span>
       </div>
     </div>
   );
@@ -2115,7 +2116,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const [hover, setHover] = useState(null);
   const greenhouse = section.kind === "greenhouse";
   const now = new Date();
-  const V = viewDate.toISOString().slice(0, 10);
+  const V = isoOf(viewDate);
   const gridRef = useRef(null);
   const paintRef = useRef(null);
 
@@ -2692,7 +2693,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
   const unskip = (key) => setData((d) => { const s = { ...(d.skips || {}) }; delete s[key]; return { ...d, skips: s }; });
   const snooze = (item, days) => { const cap = (item.dueDk != null && item.dueDk > tk) ? item.dueDk : (tk + days);
     const untilDk = Math.max(tk + 1, Math.min(tk + days, cap));
-    const untilISO = new Date(untilDk * 86400000).toISOString().slice(0, 10);
+    const untilISO = isoOf(new Date(untilDk * 86400000));
     setData((d) => ({ ...d, snoozes: { ...(d.snoozes || {}), [item.key]: untilISO } })); setSnoozeKey(null); };
   const unsnooze = (key) => setData((d) => { const s = { ...(d.snoozes || {}) }; delete s[key]; return { ...d, snoozes: s }; });
   const patchBedPlantings = (sid, bid, fn) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== sid ? s : { ...s, beds: (s.beds || []).map((b) => b.id !== bid ? b : { ...b, plantings: fn(b.plantings || []) }) }) }));
@@ -3946,7 +3947,7 @@ function EggLogger({ data, setData, display }) {
   const parseDate = (str) => { if (!str) return null; const s = str.trim(); let m;
     if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
     if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/))) { let y = m[3]; if (y.length === 2) y = "20" + y; return `${y}-${pad2(m[2])}-${pad2(m[1])}`; }
-    const t = Date.parse(s); if (!isNaN(t)) return new Date(t).toISOString().slice(0, 10); return null; };
+    const t = Date.parse(s); if (!isNaN(t)) return isoOf(new Date(t)); return null; };
   const numOrNull = (x) => { if (x == null || String(x).trim() === "") return null; const v = parseFloat(String(x).replace(/[^0-9.\-]/g, "")); return isNaN(v) ? null : v; };
   const parsedRows = (() => { const lines = importText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean); if (!lines.length) return [];
     let start = 0; if (!/^\d/.test(lines[0]) && /date|egg|sold|feed|collect|laid/i.test(lines[0])) start = 1;
@@ -4173,7 +4174,7 @@ function ReportView({ data, setData, month, hemi, display }) {
   const bucketKey = (iso) => { const d = new Date(iso);
     if (gUnit === "day") return iso.slice(0, 10);
     if (gUnit === "year") return iso.slice(0, 4);
-    if (gUnit === "week") { const dt = new Date(d); const off = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - off); return dt.toISOString().slice(0, 10); }
+    if (gUnit === "week") { const dt = new Date(d); const off = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - off); return isoOf(dt); }
     return iso.slice(0, 7); };
   const bucketLabel = (key) => {
     if (gUnit === "year") return key;
@@ -4287,7 +4288,7 @@ function ReportView({ data, setData, month, hemi, display }) {
     const startK = dayKey(new Date(eggKeys[0]));
     const endK = Math.min(winTo, dayKey(today));
     const seen = {}; const out = [];
-    for (let k = startK; k <= endK; k++) { const iso = new Date(k * 86400000).toISOString().slice(0, 10); const key = bucketKey(iso); if (seen[key]) continue; seen[key] = 1; out.push({ label: bucketLabel(key), value: eggBucketMap[key] || 0 }); }
+    for (let k = startK; k <= endK; k++) { const iso = isoOf(new Date(k * 86400000)); const key = bucketKey(iso); if (seen[key]) continue; seen[key] = 1; out.push({ label: bucketLabel(key), value: eggBucketMap[key] || 0 }); }
     return capN(out);
   })();
   const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
