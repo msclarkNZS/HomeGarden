@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 114";
+const APP_BUILD = "2026-06-25 · build 115";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -3716,22 +3716,33 @@ function MeatLogger({ data, setData, display }) {
       <div style={{ ...card }}>
         <strong style={{ fontSize: 13.5, color: C.fernDk }}>🥩 Meat log</strong>
         {entries.length === 0 ? <p style={{ fontSize: 12.5, color: C.muted, margin: "8px 0 0" }}>Nothing yet. Cull an animal for meat above or in the Animals tab.</p>
-        : <><div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
-            {entries.map((e) => (
-              <div key={e.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <input type="date" value={e.date || ""} onChange={(ev) => edit(e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
-                  <span style={{ fontSize: 13 }}>{SPECIES[e.species]?.emoji || "🥩"}</span>
-                  <input type="number" min="0" step="any" value={e.qty ?? ""} onChange={(ev) => edit(e.id, { qty: ev.target.value === "" ? null : Number(ev.target.value) })} placeholder="weight" style={{ ...inpS, flex: "0 0 70px" }} />
-                  <select value={e.unit || "kg"} onChange={(ev) => edit(e.id, { unit: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
-                  <span style={{ flex: 1 }} />
-                  <button onClick={() => remove(e.id)} style={iconBtn}><Trash2 size={13} /></button>
-                </div>
-                <div style={{ fontSize: 11, color: C.muted }}><strong style={{ color: C.ink, fontWeight: 600 }}>{e.animal}</strong>{e.klass ? ` · ${e.klass}` : ""} · {SPECIES[e.species]?.label || e.species}</div>
-                <input value={e.note || ""} onChange={(ev) => edit(e.id, { note: ev.target.value || undefined })} placeholder="add a comment…" style={{ ...inpS, fontSize: 12, color: C.muted }} />
-              </div>))}
+        : <><div style={{ maxHeight: 360, overflowY: "auto", marginTop: 8 }}>
+            {(() => {
+              const groups = {}; entries.forEach((e) => { const d = e.date || "—"; (groups[d] = groups[d] || []).push(e); });
+              const unitStr = (list) => { const u = {}; list.forEach((x) => { const un = x.unit || "kg"; u[un] = Math.round(((u[un] || 0) + (Number(x.qty) || 0)) * 100) / 100; }); return Object.entries(u).filter(([, q]) => q > 0).map(([un, q]) => `${q} ${un}`).join(" + ") || "no weight"; };
+              return Object.keys(groups).sort((a, b) => b.localeCompare(a)).map((day) => (
+                <div key={day} style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, padding: "6px 0 4px", borderBottom: `2px solid ${hexA(C.harvest, .4)}` }}>
+                    <strong style={{ fontSize: 12.5, color: C.fernDk }}>{day === "—" ? "No date" : fmtDate(day)}</strong>
+                    <span style={{ fontSize: 12, color: C.harvest, fontWeight: 600 }}>{groups[day].length} animal{groups[day].length === 1 ? "" : "s"} · {unitStr(groups[day])}</span>
+                  </div>
+                  {groups[day].map((e) => (
+                    <div key={e.id} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <input type="date" value={e.date || ""} onChange={(ev) => edit(e.id, { date: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }} />
+                        <span style={{ fontSize: 13 }}>{SPECIES[e.species]?.emoji || "🥩"}</span>
+                        <input type="number" min="0" step="any" value={e.qty ?? ""} onChange={(ev) => edit(e.id, { qty: ev.target.value === "" ? null : Number(ev.target.value) })} placeholder="weight" style={{ ...inpS, flex: "0 0 70px" }} />
+                        <select value={e.unit || "kg"} onChange={(ev) => edit(e.id, { unit: ev.target.value })} style={{ ...inpS, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{["kg", "g", "lb"].map((u) => <option key={u} value={u}>{u}</option>)}</select>
+                        <span style={{ flex: 1 }} />
+                        <button onClick={() => remove(e.id)} style={iconBtn}><Trash2 size={13} /></button>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted }}><strong style={{ color: C.ink, fontWeight: 600 }}>{e.animal}</strong>{e.klass ? ` · ${e.klass}` : ""} · {SPECIES[e.species]?.label || e.species}</div>
+                      <input value={e.note || ""} onChange={(ev) => edit(e.id, { note: ev.target.value || undefined })} placeholder="add a comment…" style={{ ...inpS, fontSize: 12, color: C.muted }} />
+                    </div>))}
+                </div>));
+            })()}
           </div>
-          <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Total: {Object.entries(byUnit).map(([u, q]) => `${q} ${u}`).join(", ")} from {entries.length} animal{entries.length === 1 ? "" : "s"}. Edit or remove any entry in place — removing one keeps the animal archived as culled.</p></>}
+          <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Grouped by cull date. Overall: {Object.entries(byUnit).map(([u, q]) => `${q} ${u}`).join(", ")} from {entries.length} animal{entries.length === 1 ? "" : "s"}. Edit or remove any entry in place — removing one keeps the animal archived as culled.</p></>}
       </div>
     </div>
   );
@@ -4409,9 +4420,13 @@ function ReportView({ data, setData, month, hemi, display }) {
           expandable open={cardOpen("animals")} onToggle={() => setOpenCard(openCard === "animals" ? null : "animals")}>
           {allMobs.length ? Object.entries(bySpeciesStock).map(([sp, ms]) => { const head = ms.reduce((n, m) => n + mobHead(m), 0);
             return <div key={sp} style={row}>{stockLib[sp]?.emoji} <strong>{stockLib[sp]?.label}</strong>: {head} — {ms.map((m) => `${mobHead(m)} ${m.klass} (${m.area})`).join(", ")}</div>; }) : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No animals recorded.</p>}
-          {(Object.keys(products).length > 0 || meatW.length > 0) && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
-            {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}
-            {meatW.length > 0 && <div style={row}>🥩 <strong>Meat</strong>: {Object.entries(meatByUnit).map(([u, q]) => `${q} ${u}`).join(", ")} <span style={{ color: C.muted }}>· {meatW.length} animal{meatW.length === 1 ? "" : "s"}</span></div>}</>}
+          {Object.keys(products).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Products · {windowLabel}</div>
+            {Object.entries(products).map(([key, q]) => { const [type, unit] = key.split("|"); return <div key={key} style={row}>{STOCK_LOG[type]?.icon} <strong>{STOCK_LOG[type]?.label}</strong>: {q} {unit}</div>; })}</>}
+          {meatW.length > 0 && (() => { const days = {}; meatW.forEach((x) => { const d = x.date || "—"; (days[d] = days[d] || []).push(x); });
+            return <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>🥩 Meat · {windowLabel}</div>
+              {Object.keys(days).sort((a, b) => b.localeCompare(a)).map((d) => { const list = days[d]; const u = {}; list.forEach((x) => { const un = x.unit || "kg"; u[un] = Math.round(((u[un] || 0) + (Number(x.qty) || 0)) * 100) / 100; });
+                return <div key={d} style={row}>• <strong>{d === "—" ? "No date" : fmtDate(d)}</strong>: {list.length} animal{list.length === 1 ? "" : "s"} · {Object.entries(u).map(([un, q]) => `${q} ${un}`).join(" + ") || "no weight"}</div>; })}
+              <div style={{ ...row, fontWeight: 600 }}>Total: {Object.entries(meatByUnit).map(([u, q]) => `${q} ${u}`).join(", ")} · {meatW.length} animal{meatW.length === 1 ? "" : "s"}</div></>; })()}
           {treatList.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Treatments &amp; events · {windowLabel}</div>
             {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon || (t.type === "task" ? "✅" : "•")} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label || (t.type === "task" ? "Planned job" : t.type)}{t.what && t.what !== STOCK_LOG[t.type]?.label ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
           {(data.archive || []).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Past animals</div>
