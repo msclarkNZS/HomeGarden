@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 115";
+const APP_BUILD = "2026-06-25 · build 116";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1255,6 +1255,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
 // ===================== section (beds or plants) ===================
 function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, setViewDate, display, month }) {
   const lib = useLib();
+  const isPhone = useIsPhone();
   const wrapRef = useRef(null);
   const [picker, setPicker] = useState(false);
   const [hover, setHover] = useState(null);
@@ -1490,26 +1491,31 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const counts = {}; cells.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; });
               const names = Object.keys(counts);
               const fam = bedFamily(b, viewDate); const col = fam ? FAMILIES[fam].color : C.fern;
-              const occ = new Set(cells.map((c) => `${c.r},${c.c}`)).size;
-              const total = (b.cols || 4) * (b.rows || 3); const free = total - occ;
+              const fg = bedFineGrid(b, realOf(b.w, b.h, sectionReal));
+              const totalSq = Math.max(1, fg.gw * fg.gh);
+              const occSq = Object.keys(squareOwners(bedPlantings(b), fg, viewDate)).length;
+              const pct = Math.round((occSq / totalSq) * 100);
+              const fillLabel = pct <= 0 ? "empty" : pct >= 100 ? "full" : `${pct}% full`;
+              const anyPlanned = bedPlantings(b).map(plantingAsCell).some((c) => new Date(c.planted) > new Date() && visibleAt(c, viewDate));
               const dim = dimLabel(realOf(b.w, b.h, sectionReal));
               return (
                 <div key={b.id}
                   onPointerDown={editMode ? (e) => drag.onPointerDown(e, b, "move") : undefined}
                   onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
                   style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span></div>
-                  <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
-                    {names.length ? names.map((n) => { const pl = counts[n]; const planned = bedPlantings(b).map(plantingAsCell).some((c) => c.plant === n && new Date(c.planted) > new Date() && visibleAt(c, viewDate));
+                  <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>{anyPlanned ? <span style={{ fontSize: 10 }}>⏳</span> : null}</div>
+                  {!isPhone && <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
+                    {names.length ? names.map((n) => { const pl = counts[n];
                       return (
                         <div key={n} style={{ fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, textShadow: "0 1px 2px rgba(0,0,0,.7)", lineHeight: 1.2 }}>
                           <span style={{ width: 7, height: 7, borderRadius: 2, background: lib.color(n, null), flexShrink: 0, boxShadow: "0 0 0 1px rgba(255,255,255,.5)" }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}{pl > 1 ? ` ×${pl}` : ""}{planned ? " ⏳" : ""}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}{pl > 1 ? ` ×${pl}` : ""}</span>
                         </div>); }) : <div style={{ fontSize: 10, opacity: .9, textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>empty</div>}
-                  </div>
+                  </div>}
+                  {isPhone && <div style={{ flex: 1 }} />}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                    <span style={{ fontSize: 9.5, opacity: .95, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {free}/{total} free{dim ? ` · ${dim}` : ""}{fam ? ` · ${GROUP_LABEL[rotationNextGroup(fam)]} next` : ""}
+                    <span style={{ fontSize: 10, fontWeight: 600, opacity: .97, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {fillLabel}{!isPhone && dim ? ` · ${dim}` : ""}
                     </span>
                     {editMode && !b.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 15, lineHeight: 1, color: "#fff", padding: "6px 4px 2px 12px", margin: "-6px -2px -2px 0", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,.6)", flexShrink: 0 }}>⌟</span>}
                   </div>
