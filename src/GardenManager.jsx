@@ -210,7 +210,7 @@ const BERRY = [
   { name:"Whitecurrant", icon:"bush", plant:"Winter, bare-root", harvest:"Dec–Jan", hmon:[12,1], prune:"Winter, as redcurrant", feed:"Compost + potash spring", note:"Sweeter, milder redcurrant; same care.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
   { name:"Gooseberry", icon:"bush", plant:"Winter", harvest:"Nov–Dec", hmon:[11,12], prune:"Open-centre prune in winter", feed:"Compost spring", note:"Watch for sawfly stripping the leaves.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]},{name:"Check for sawfly",months:[10,11]}] },
   { name:"Cranberry", icon:"bush", plant:"Spring", harvest:"Mar–Apr", hmon:[3,4], prune:"Light, after harvest", feed:"Acid fertiliser in spring", note:"Low spreading mat; wants acidic, constantly moist soil.", tasks:[{name:"Acid feed",months:[9]}] },
-  { name:"Strawberry", icon:"bush", plant:"Autumn–winter runners", harvest:"Oct–Jan", hmon:[10,11,12,1], prune:"Trim old leaves & runners after fruiting", feed:"Potash-rich feed at flowering", note:"Mulch with straw; replace plants every ~3 years.", tasks:[{name:"Trim old leaves & runners",months:[3]},{name:"Feed at flowering",months:[9]},{name:"Straw mulch",months:[10]}] },
+  { name:"Strawberry", icon:"bush", plant:"Autumn–winter runners", harvest:"Oct–Jan", hmon:[10,11,12,1], prune:"Trim old leaves & runners after fruiting", feed:"Potash-rich feed at flowering", note:"Mulch with straw; replace plants every ~3 years.", tasks:[{name:"Trim old leaves & runners",months:[3]},{name:"Feed at flowering",months:[9]},{name:"Straw mulch",months:[10]}], availableIn:["garden","greenhouse"] },
 ];
 
 const SECTION_KINDS = {
@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 116";
+const APP_BUILD = "2026-06-25 · build 118";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -536,6 +536,8 @@ function buildLibrary(data) {
   const apply = (p, type) => { const e = edits[p.name] || {};
     const merged = { ...p, ...e, type, custom: !!p.custom,
       color: e.color || p.color || famColor(p, type),
+      fam: e.fam || p.fam || (type === "berry" ? "berryfam" : p.fam),
+      hmode: e.hmode || p.hmode || (((e.hmon || p.hmon) || []).length ? "months" : p.hmode),
       availableIn: e.availableIn || p.availableIn || [],
       varieties: varList(e.varieties ?? p.varieties ?? NZ_VARIETIES[p.name]) };
     if (type === "veg") merged.sow = shiftMonths(merged.sow, shift); // canonical (NZ) → local hemisphere
