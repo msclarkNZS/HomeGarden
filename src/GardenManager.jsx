@@ -27,6 +27,7 @@ const FAMILIES = {
   apiaceae:       { label: "Carrot family",color: "#C2772E", group: "root" },
   amaryllidaceae: { label: "Onion family", color: "#8A6FA0", group: "root" },
   amaranthaceae:  { label: "Beet family",  color: "#9B3B4E", group: "root" },
+  chenopodiaceae: { label: "Beet family (leaf)", color: "#A5646B", group: "brassica" },
   asteraceae:     { label: "Lettuce family",color:"#7FA05B", group: "flexible" },
   convolvulaceae: { label: "Kūmara",       color: "#A0703E", group: "flexible" },
   lamiaceae:      { label: "Herbs",        color: "#5E8A6E", group: "flexible" },
@@ -137,8 +138,8 @@ const VEG = [
   { name:"Parsnip", fam:"apiaceae", sow:[9,10,11,12], spacing:8, sun:"Full sun", d:120, note:"Slow to germinate; sweetens with winter cold." },
   { name:"Celery", fam:"apiaceae", sow:[9,10,11], spacing:25, sun:"Part sun", d:100, note:"Thirsty — never let it dry out." },
   { name:"Beetroot", fam:"amaranthaceae", sow:[1,2,3,8,9,10,11,12], spacing:10, sun:"Full sun", d:60, note:"Easy; the leaves are good eating too." },
-  { name:"Silverbeet", fam:"amaranthaceae", sow:[2,3,4,8,9,10,11], spacing:30, sun:"Part–full sun", d:55, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Near year-round here; pick outer leaves and it keeps giving." },
-  { name:"Spinach", fam:"amaranthaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Prefers cool months; bolts in heat." },
+  { name:"Silverbeet", fam:"chenopodiaceae", sow:[2,3,4,8,9,10,11], spacing:30, sun:"Part–full sun", d:55, hmode:"months", hmon:[1,2,3,4,5,6,7,8,9,10,11,12], note:"Near year-round here; pick outer leaves and it keeps giving." },
+  { name:"Spinach", fam:"chenopodiaceae", sow:[3,4,5,8,9], spacing:15, sun:"Part sun", d:45, note:"Prefers cool months; bolts in heat." },
   { name:"Onion", fam:"amaryllidaceae", sow:[4,5,6,7], spacing:10, sun:"Full sun", d:150, note:"Long-day types from seed in autumn–winter for summer bulbs." },
   { name:"Garlic", fam:"amaryllidaceae", sow:[5,6,7], spacing:15, sun:"Full sun", d:210, note:"Tradition: plant by the shortest day, lift by the longest.", tasks:[{name:"Stop watering",months:[11]},{name:"Lift & dry bulbs",months:[12]}] },
   { name:"Leek", fam:"amaryllidaceae", sow:[9,10,11,12], spacing:15, sun:"Full sun", d:120, note:"Trench and blanch the stems for length." },
@@ -342,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 119";
+const APP_BUILD = "2026-06-25 · build 120";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
