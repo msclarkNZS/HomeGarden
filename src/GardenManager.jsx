@@ -342,7 +342,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 118";
+const APP_BUILD = "2026-06-25 · build 119";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -2657,16 +2657,27 @@ const plantingRemoved = (p) => { const cs = p.cells || []; if (!cs.length) retur
 // view a planting as a single crop record (so the old per-cell readers keep working)
 const plantingAsCell = (p) => ({ id: p.id, plant: p.plant, fam: p.fam, variety: p.variety, planted: p.planted, removed: plantingRemoved(p), ferts: p.ferts || [], notes: p.notes || "", sown: p.sown || null, doneTasks: p.doneTasks || [], noHarvest: p.noHarvest });
 
+// how much of a bed's currently-live squares belong to each plant family (weighted by squares, not by planting count)
+function bedFamilyWeights(bed, viewDate) {
+  const cellsLiveN = (p) => (p.cells || []).filter((c) => !c.removed || (viewDate && new Date(c.removed) >= viewDate)).length || 1;
+  const live = bedPlantings(bed).filter((p) => !viewDate || visibleAt(plantingAsCell(p), viewDate));
+  const counts = {}; let total = 0;
+  live.forEach((p) => { if (!p.fam) return; const w = cellsLiveN(p); counts[p.fam] = (counts[p.fam] || 0) + w; total += w; });
+  return { counts, total, live };
+}
 function bedFamily(bed, viewDate) {
-  const ps = bedPlantings(bed).map(plantingAsCell);
-  const live = ps.filter((c) => !viewDate || visibleAt(c, viewDate));
-  const pool = live.length ? live : ps;
-  const veg = pool.filter((c) => FAMILIES[c.fam] && FAMILIES[c.fam].group !== "flexible");
-  if (veg.length) {
-    const counts = {}; veg.forEach((c) => counts[c.fam] = (counts[c.fam] || 0) + 1);
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  }
-  return pool[0]?.fam || null;
+  const { counts } = bedFamilyWeights(bed, viewDate);
+  const entries = Object.entries(counts);
+  const nonFlexLive = entries.filter(([fam]) => FAMILIES[fam] && FAMILIES[fam].group !== "flexible");
+  if (nonFlexLive.length) return nonFlexLive.sort((a, b) => b[1] - a[1])[0][0]; // currently growing — dominant by area
+  if (entries.length) return entries.sort((a, b) => b[1] - a[1])[0][0]; // only flexible things growing right now
+  // bed is currently empty: react to whatever was grown MOST RECENTLY, not whatever was most common historically —
+  // rotation should reflect what you'd be rotating away from, not a popularity contest across the bed's whole past
+  const all = bedPlantings(bed).filter((p) => p.fam && FAMILIES[p.fam]);
+  if (!all.length) return null;
+  const nonFlexAll = all.filter((p) => FAMILIES[p.fam].group !== "flexible");
+  const pool = nonFlexAll.length ? nonFlexAll : all;
+  return pool.slice().sort((a, b) => (b.planted || "").localeCompare(a.planted || ""))[0]?.fam || null;
 }
 
 // =========================== DO NOW ===============================
@@ -3056,8 +3067,11 @@ function suggestRotation(bed, month, today, vegList = VEG) {
   if (!lastGroup || lastGroup === "flexible") nextGroup = "legume";
   else nextGroup = ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(lastGroup) + 1) % ROTATION_SEQUENCE.length];
   let warn = null;
-  const recent = (bed.cells || []).map((c) => c.fam).filter((f) => f === fam).length;
-  if (fam && recent >= 4) warn = `${FAMILIES[fam].label} fill much of this bed — make sure they move on next round to break the disease cycle.`;
+  if (fam && lastGroup !== "flexible") {
+    const { counts, total } = bedFamilyWeights(bed, today);
+    const share = total > 0 ? (counts[fam] || 0) / total : 0;
+    if (share >= 0.6) warn = `${FAMILIES[fam].label} fill most of this bed — make sure they move on next round to break the disease cycle.`;
+  }
   const picks = vegList.filter((v) => FAMILIES[v.fam]?.group === nextGroup && (v.sow || []).includes(month)).slice(0, 6);
   return { lastLabel, nextGroup, picks, warn };
 }
