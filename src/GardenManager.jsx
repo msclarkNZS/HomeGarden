@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 120";
+const APP_BUILD = "2026-06-25 · build 121";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -420,6 +420,11 @@ function normalize(d) {
   });
   base.archive = (base.archive || []).map((r) => ({ ...r, species: SP_MIGRATE[r.species] || r.species }));
   base.harvests = (base.harvests || []).map((h) => FRUIT_RENAME[h.plant] ? { ...h, plant: FRUIT_RENAME[h.plant] } : h);
+  // existing plantings carry the family they were given when planted — if a crop's canonical family
+  // changes later (e.g. silverbeet/spinach moved out of the root group), resync already-planted records too
+  const VEG_FAM_BY_NAME = {}; VEG.forEach((v) => { VEG_FAM_BY_NAME[v.name] = v.fam; });
+  base.sections = base.sections.map((s) => ({ ...s, beds: (s.beds || []).map((b) => b.plantings ? { ...b, plantings: b.plantings.map((p) => {
+    const f = VEG_FAM_BY_NAME[p.plant]; return (f && f !== p.fam) ? { ...p, fam: f } : p; }) } : b) }));
   // a planned planting that hasn't been confirmed keeps rolling forward (stays a plan) until it's marked planted
   const _tomorrow = addDays(todayISO(), 1);
   base.sections = base.sections.map((s) => ({ ...s, beds: (s.beds || []).map((b) => b.plantings ? { ...b, plantings: b.plantings.map((p) => (p.planned && !p.confirmed && p.planted && p.planted <= todayISO()) ? { ...p, planted: _tomorrow } : p) } : b) }));
