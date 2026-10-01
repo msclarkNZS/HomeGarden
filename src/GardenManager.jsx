@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 124";
+const APP_BUILD = "2026-06-25 · build 125";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4154,6 +4154,7 @@ function EggLogger({ data, setData, display }) {
 
 function EggEconChart({ points }) {
   if (!points || !points.length) return null;
+  const money = (n) => "$" + (Number(n) || 0).toFixed(2);
   const W = 600, H = 190, padL = 28, padR = 36, padT = 10, padB = 20;
   const n = points.length;
   const maxE = Math.max(1, ...points.map((d) => d.laid));
