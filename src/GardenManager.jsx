@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 127";
+const APP_BUILD = "2026-06-25 · build 128";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4199,7 +4199,7 @@ function EggEconChart({ points }) {
       </svg>
 
       {sel && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "center", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", marginTop: 6, fontSize: 12 }}>
-        <strong style={{ color: C.fernDk }}>{sel.label}</strong>
+        <strong style={{ color: C.fernDk }}>{sel.range || sel.label}</strong>
         <span>Produced <strong>{sel.laid}</strong></span>
         <span>Sold <strong>{sel.sold}</strong></span>
         <span>Home use <strong>{sel.kept}</strong></span>
@@ -4217,7 +4217,7 @@ function EggEconChart({ points }) {
             <tbody>
               {points.map((d, i) => (
                 <tr key={i} onClick={() => toggleSel(i)} style={{ cursor: "pointer", background: i === si ? hexA(C.harvest, .1) : "transparent" }}>
-                  <td style={{ ...td, textAlign: "left" }}>{d.label}</td>
+                  <td style={{ ...td, textAlign: "left" }}>{d.range || d.label}</td>
                   <td style={td}>{d.laid}</td><td style={td}>{d.sold}</td><td style={td}>{d.kept}</td>
                   <td style={td}>{d.cpe != null ? money(d.cpe) : "—"}</td>
                 </tr>))}
@@ -4271,6 +4271,15 @@ function ReportView({ data, setData, month, hemi, display }) {
     if (gUnit === "year") return key;
     if (gUnit === "month") { const m = Number(key.slice(5, 7)); return `${MONTHS[m - 1]} ${key.slice(2, 4)}`; }
     const d = new Date(key); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+  // the full from–to span a bucket covers, for contexts with room to show it (vs. bucketLabel's compact axis form)
+  const bucketRangeLabel = (key) => {
+    if (gUnit === "year") return `1 Jan – 31 Dec ${key}`;
+    if (gUnit === "month") { const y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7)); const lastDay = new Date(y, m, 0).getDate();
+      return `1–${lastDay} ${MONTHS[m - 1]} ${y}`; }
+    if (gUnit === "week") { const start = new Date(key); const end = new Date(start); end.setDate(end.getDate() + 6);
+      const sY = start.getFullYear(), eY = end.getFullYear(), sM = start.getMonth(), eM = end.getMonth();
+      return (sM === eM && sY === eY) ? `${start.getDate()}–${end.getDate()} ${MONTHS[eM]} ${eY}` : `${start.getDate()} ${MONTHS[sM]} – ${end.getDate()} ${MONTHS[eM]} ${eY}`; }
+    const d = new Date(key); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
   const capN = (arr, n = 370) => arr.length > n ? arr.slice(arr.length - n) : arr;
   const [scope, setScope] = useState("all");
 
@@ -4384,7 +4393,7 @@ function ReportView({ data, setData, month, hemi, display }) {
     for (let k = startK; k <= endK; k++) { const iso = isoOf(new Date(k * 86400000)); const key = bucketKey(iso); if (seen[key]) continue; seen[key] = 1;
       const laid = eggBucketMap[key] || 0; const sold = Math.min(laid, saleBucketMap[key] || 0); const kept = Math.max(0, laid - sold);
       cumLaid += laid; cumFeed += (feedBucketMap[key] || 0);
-      out.push({ label: bucketLabel(key), laid, sold, kept, cpe: (cumLaid > 0 && cumFeed > 0) ? cumFeed / cumLaid : null }); }
+      out.push({ label: bucketLabel(key), range: bucketRangeLabel(key), laid, sold, kept, cpe: (cumLaid > 0 && cumFeed > 0) ? cumFeed / cumLaid : null }); }
     return capN(out);
   })();
   const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
