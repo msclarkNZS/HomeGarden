@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 126";
+const APP_BUILD = "2026-06-25 · build 127";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4159,6 +4159,7 @@ function EggEconChart({ points }) {
   const money = (n) => "$" + (Number(n) || 0).toFixed(2);
   const si = Math.min(selIdx == null ? points.length - 1 : selIdx, points.length - 1);
   const sel = points[si];
+  const toggleSel = (i) => setSelIdx((cur) => (cur == null ? points.length - 1 : cur) === i ? null : i);
   const W = 600, H = 190, padL = 28, padR = 36, padT = 10, padB = 20;
   const n = points.length;
   const maxE = Math.max(1, ...points.map((d) => d.laid));
@@ -4185,7 +4186,7 @@ function EggEconChart({ points }) {
           return <text key={"r" + t} x={W - padR + 5} y={yy + 3} textAnchor="start" fontSize="9" fill={C.fernDk}>{money(v)}</text>; })}
         {si != null && <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} stroke={C.fernDk} strokeWidth="1" strokeDasharray="2,2" opacity=".4" />}
         {points.map((d, i) => (
-          <g key={i} onClick={() => setSelIdx(i)} style={{ cursor: "pointer" }}>
+          <g key={i} onClick={() => toggleSel(i)} style={{ cursor: "pointer" }}>
             <rect x={x(i) - hitW / 2} y={padT} width={hitW} height={innerH} fill="transparent" />
             {d.laid > 0 && <>
               <rect x={x(i) - bw / 2} y={yE(d.sold)} width={bw} height={Math.max(0, yE(0) - yE(d.sold))} rx="1" fill={hexA(C.soil, i === si ? .9 : .6)} />
@@ -4197,12 +4198,13 @@ function EggEconChart({ points }) {
         {ticks.map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="9" fill={C.muted}>{points[i].label}</text>)}
       </svg>
 
-      {sel && <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", marginTop: 6, fontSize: 12 }}>
+      {sel && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "center", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", marginTop: 6, fontSize: 12 }}>
         <strong style={{ color: C.fernDk }}>{sel.label}</strong>
         <span>Produced <strong>{sel.laid}</strong></span>
         <span>Sold <strong>{sel.sold}</strong></span>
         <span>Home use <strong>{sel.kept}</strong></span>
         <span>Cost/egg <strong>{sel.cpe != null ? money(sel.cpe) : "—"}</strong></span>
+        {selIdx != null && <button onClick={() => setSelIdx(null)} title="Back to latest period" style={{ border: "none", background: "transparent", cursor: "pointer", color: C.muted, padding: 0, display: "inline-flex" }}><X size={13} /></button>}
       </div>}
 
       <button onClick={() => setShowTable((s) => !s)} style={{ border: "none", background: "transparent", color: C.fern, cursor: "pointer", textDecoration: "underline", fontSize: 12, padding: 0, fontFamily: "inherit", marginTop: 8 }}>
@@ -4214,7 +4216,7 @@ function EggEconChart({ points }) {
             <thead><tr><th style={th}>Period</th><th style={th}>Produced</th><th style={th}>Sold</th><th style={th}>Home use</th><th style={th}>Cost/egg</th></tr></thead>
             <tbody>
               {points.map((d, i) => (
-                <tr key={i} onClick={() => setSelIdx(i)} style={{ cursor: "pointer", background: i === si ? hexA(C.harvest, .1) : "transparent" }}>
+                <tr key={i} onClick={() => toggleSel(i)} style={{ cursor: "pointer", background: i === si ? hexA(C.harvest, .1) : "transparent" }}>
                   <td style={{ ...td, textAlign: "left" }}>{d.label}</td>
                   <td style={td}>{d.laid}</td><td style={td}>{d.sold}</td><td style={td}>{d.kept}</td>
                   <td style={td}>{d.cpe != null ? money(d.cpe) : "—"}</td>
