@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 123";
+const APP_BUILD = "2026-06-25 · build 124";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4152,26 +4152,34 @@ function EggLogger({ data, setData, display }) {
   );
 }
 
-function EggChart({ points, avgWindow = 7 }) {
+function EggEconChart({ points }) {
   if (!points || !points.length) return null;
-  const W = 600, H = 170, padL = 26, padR = 8, padT = 10, padB = 20;
+  const W = 600, H = 190, padL = 28, padR = 36, padT = 10, padB = 20;
   const n = points.length;
-  const maxE = Math.max(1, ...points.map((d) => d.value));
+  const maxE = Math.max(1, ...points.map((d) => d.laid));
+  const cpeVals = points.map((d) => d.cpe).filter((v) => v != null);
+  const maxCpe = cpeVals.length ? Math.max(...cpeVals) * 1.15 : 1;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const x = (i) => padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-  const y = (v) => padT + innerH - (v / maxE) * innerH;
+  const yE = (v) => padT + innerH - (v / maxE) * innerH;
+  const yC = (v) => padT + innerH - (v / maxCpe) * innerH;
   const bw = Math.max(1, Math.min(16, (innerW / n) * 0.7));
-  const N = Math.max(1, avgWindow);
-  const avg = points.map((d, i) => { const s = points.slice(Math.max(0, i - N + 1), i + 1); return s.reduce((a, b) => a + b.value, 0) / s.length; });
-  const line = avg.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const firstCpeIdx = points.findIndex((d) => d.cpe != null);
+  const linePts = firstCpeIdx === -1 ? "" : points.slice(firstCpeIdx).map((d, j) => `${x(firstCpeIdx + j).toFixed(1)},${yC(d.cpe).toFixed(1)}`).join(" ");
   const ticks = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", marginTop: 4 }}>
-      {[0, 0.5, 1].map((t) => { const v = maxE * t, yy = y(v); return (<g key={t}>
+      {[0, 0.5, 1].map((t) => { const v = maxE * t, yy = yE(v); return (<g key={"l" + t}>
         <line x1={padL} x2={W - padR} y1={yy} y2={yy} stroke={C.line} strokeWidth="1" />
         <text x={padL - 4} y={yy + 3} textAnchor="end" fontSize="9" fill={C.muted}>{Math.round(v)}</text></g>); })}
-      {points.map((d, i) => d.value > 0 ? <rect key={i} x={x(i) - bw / 2} y={y(d.value)} width={bw} height={Math.max(0, padT + innerH - y(d.value))} rx="1" fill={hexA(C.harvest, .55)} /> : null)}
-      {N > 1 && <polyline points={line} fill="none" stroke={C.fern} strokeWidth="2" strokeLinejoin="round" />}
+      {cpeVals.length > 0 && [0, 0.5, 1].map((t) => { const v = maxCpe * t, yy = yC(v);
+        return <text key={"r" + t} x={W - padR + 5} y={yy + 3} textAnchor="start" fontSize="9" fill={C.fernDk}>{money(v)}</text>; })}
+      {points.map((d, i) => d.laid > 0 ? (
+        <g key={i}>
+          <rect x={x(i) - bw / 2} y={yE(d.sold)} width={bw} height={Math.max(0, yE(0) - yE(d.sold))} rx="1" fill={hexA(C.soil, .65)} />
+          <rect x={x(i) - bw / 2} y={yE(d.laid)} width={bw} height={Math.max(0, yE(d.sold) - yE(d.laid))} rx="1" fill={hexA(C.harvest, .55)} />
+        </g>) : null)}
+      {linePts && <polyline points={linePts} fill="none" stroke={C.fernDk} strokeWidth="2" strokeLinejoin="round" />}
       {ticks.map((i) => <text key={i} x={x(i)} y={H - 5} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="9" fill={C.muted}>{points[i].label}</text>)}
     </svg>
   );
@@ -4219,7 +4227,6 @@ function ReportView({ data, setData, month, hemi, display }) {
     if (gUnit === "year") return key;
     if (gUnit === "month") { const m = Number(key.slice(5, 7)); return `${MONTHS[m - 1]} ${key.slice(2, 4)}`; }
     const d = new Date(key); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
-  const avgWindow = gUnit === "day" ? 7 : gUnit === "week" ? 4 : 3;
   const capN = (arr, n = 370) => arr.length > n ? arr.slice(arr.length - n) : arr;
   const [scope, setScope] = useState("all");
 
@@ -4320,14 +4327,20 @@ function ReportView({ data, setData, month, hemi, display }) {
   const hasChooks = allMobs.some((m) => m.species === "chicken") || feedW.length || salesW.length || buysW.length || birdSalesW.length;
   const hasStock = allMobs.length > 0 || (data.archive || []).length > 0;
   const eggBucketMap = {}; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) { const key = bucketKey(f.date); eggBucketMap[key] = (eggBucketMap[key] || 0) + (Number(f.qty) || 0); } } }); });
-  // build a continuous series so periods with no eggs count as 0 (from the first record to the window end / today)
+  const saleBucketMap = {}; salesW.forEach((x) => { const key = bucketKey(x.date); saleBucketMap[key] = (saleBucketMap[key] || 0) + (Number(x.eggs) || 0); });
+  const feedBucketMap = {}; feedW.forEach((x) => { const key = bucketKey(x.date); feedBucketMap[key] = (feedBucketMap[key] || 0) + (Number(x.cost) || 0); });
+  // build a continuous series so periods with no eggs count as 0 (from the first record to the window end / today),
+  // carrying sold / home-use / a running (cumulative) cost-per-egg alongside production
   const eggKeys = Object.keys(eggBucketMap).sort();
-  const eggPoints = (() => {
+  const eggEconPoints = (() => {
     if (!eggKeys.length) return [];
     const startK = dayKey(new Date(eggKeys[0]));
     const endK = Math.min(winTo, dayKey(today));
-    const seen = {}; const out = [];
-    for (let k = startK; k <= endK; k++) { const iso = isoOf(new Date(k * 86400000)); const key = bucketKey(iso); if (seen[key]) continue; seen[key] = 1; out.push({ label: bucketLabel(key), value: eggBucketMap[key] || 0 }); }
+    const seen = {}; const out = []; let cumLaid = 0, cumFeed = 0;
+    for (let k = startK; k <= endK; k++) { const iso = isoOf(new Date(k * 86400000)); const key = bucketKey(iso); if (seen[key]) continue; seen[key] = 1;
+      const laid = eggBucketMap[key] || 0; const sold = Math.min(laid, saleBucketMap[key] || 0); const kept = Math.max(0, laid - sold);
+      cumLaid += laid; cumFeed += (feedBucketMap[key] || 0);
+      out.push({ label: bucketLabel(key), laid, sold, kept, cpe: (cumLaid > 0 && cumFeed > 0) ? cumFeed / cumLaid : null }); }
     return capN(out);
   })();
   const ledgerRows = [...feedW.map((x) => ({ ...x, kind: "feed" })), ...salesW.map((x) => ({ ...x, kind: "sales" })), ...buysW.map((x) => ({ ...x, kind: "purchases" })), ...birdSalesW.map((x) => ({ ...x, kind: "birdSales" }))].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -4408,10 +4421,11 @@ function ReportView({ data, setData, month, hemi, display }) {
                 : <div style={{ fontSize: 12.5, color: C.muted, marginTop: 1 }}>nothing logged this period</div>}
             </div>
           </div>
-          {eggPoints.length > 1 ? <><EggChart points={eggPoints} avgWindow={avgWindow} />
-            <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
-              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> eggs/{gUnit}</span>
-              <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> rolling avg</span>
+          {eggEconPoints.length > 1 ? <><EggEconChart points={eggEconPoints} />
+            <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 2 }}>
+              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.soil, .65), borderRadius: 2 }} /> sold/{gUnit}</span>
+              <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> home use/{gUnit}</span>
+              <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fernDk, verticalAlign: 3 }} /> cost/egg (running)</span>
             </div></> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Log daily collections in Gather &amp; care to see the trend here.</p>}
           {costPerEgg != null && <div style={{ ...row, marginTop: 8 }}>Cost per egg <strong>{money(costPerEgg)}</strong> (~{money(costPerEgg * 12)}/dozen) based on feed logged so far. The {eggsKept} kept for home use cost about <strong>{money(keptCost)}</strong>.</div>}
         </StatCard>}
