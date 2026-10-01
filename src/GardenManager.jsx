@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 121";
+const APP_BUILD = "2026-06-25 · build 123";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4309,7 +4309,7 @@ function ReportView({ data, setData, month, hemi, display }) {
   const seenB = {}; const treatList = []; treatments.forEach((t) => { if (t.batch) { if (seenB[t.batch]) { seenB[t.batch].n++; return; } const o = { ...t, n: 1 }; seenB[t.batch] = o; treatList.push(o); } else treatList.push(t); });
   let eggsLaid = 0; allMobs.forEach((m) => { if (m.species !== "chicken") return; (m.ferts || []).forEach((f) => { if (f.type === "eggs" && f.qty != null) { const k = dayKey(new Date(f.date)); if (k >= winFrom && k <= winTo) eggsLaid += f.qty; } }); });
   const feedW = (data.eggLedger?.feed || []).filter(inWin); const salesW = (data.eggLedger?.sales || []).filter(inWin); const buysW = (data.eggLedger?.purchases || []).filter(inWin); const birdSalesW = (data.eggLedger?.birdSales || []).filter(inWin);
-  const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
+  const feedCost = feedW.reduce((n, x) => n + (x.cost || 0), 0); const feedKgW = Math.round(feedW.reduce((n, x) => n + (x.kg || 0), 0) * 100) / 100; const revenue = salesW.reduce((n, x) => n + (x.amount || 0), 0);
   const birdCost = buysW.reduce((n, x) => n + (x.cost || 0), 0); const birdsBought = buysW.reduce((n, x) => n + (x.birds || 0), 0);
   const birdRevenue = birdSalesW.reduce((n, x) => n + (x.amount || 0), 0); const birdsSold = birdSalesW.reduce((n, x) => n + (x.birds || 0), 0);
   const eggsSold = salesW.reduce((n, x) => n + (x.eggs || 0), 0); const eggsKept = Math.max(0, eggsLaid - eggsSold);
@@ -4391,14 +4391,29 @@ function ReportView({ data, setData, month, hemi, display }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, alignItems: "start" }}>
 
         {hasChooks && <StatCard icon="🥚" label={`Eggs · ${windowLabel}`} value={eggsLaid} accent={C.harvest}
-          sub={`${eggsSold} sold · ${eggsKept} kept${costPerEgg != null ? ` · ~${money(costPerEgg)}/egg` : ""}`}
+          sub={`${eggsLaid} produced · ${eggsSold} sold · ${eggsKept} home use`}
           expandable open={cardOpen("eggs")} onToggle={() => setOpenCard(openCard === "eggs" ? null : "eggs")}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[["Produced", eggsLaid, C.fernDk], ["Sold", eggsSold, C.soil], ["Home use", eggsKept, C.harvest]].map(([lbl, val, col]) => (
+              <div key={lbl} style={{ flex: 1, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 6px", textAlign: "center" }}>
+                <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 21, fontWeight: 600, color: col, lineHeight: 1.1 }}>{val}</div>
+                <div style={{ fontSize: 10.5, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: .3, marginTop: 2 }}>{lbl}</div>
+              </div>))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: hexA(C.soil, .1), border: `1px solid ${hexA(C.soil, .35)}`, borderRadius: 10, padding: "8px 10px", marginBottom: 12 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>🌾</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10.5, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: .3 }}>Feed bought · {windowLabel}</div>
+              {(feedKgW > 0 || feedCost > 0) ? <div style={{ fontSize: 14, color: C.ink, marginTop: 1 }}>{feedKgW > 0 && <strong>{feedKgW}kg</strong>}{feedKgW > 0 && feedCost > 0 ? " · " : ""}{feedCost > 0 && <strong>{money(feedCost)}</strong>}</div>
+                : <div style={{ fontSize: 12.5, color: C.muted, marginTop: 1 }}>nothing logged this period</div>}
+            </div>
+          </div>
           {eggPoints.length > 1 ? <><EggChart points={eggPoints} avgWindow={avgWindow} />
             <div style={{ fontSize: 11, color: C.muted, display: "flex", gap: 14, justifyContent: "center", marginTop: 2 }}>
               <span><span style={{ display: "inline-block", width: 9, height: 9, background: hexA(C.harvest, .55), borderRadius: 2 }} /> eggs/{gUnit}</span>
               <span><span style={{ display: "inline-block", width: 14, height: 2, background: C.fern, verticalAlign: 3 }} /> rolling avg</span>
             </div></> : <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Log daily collections in Gather &amp; care to see the trend here.</p>}
-          {costPerEgg != null && <div style={{ ...row, marginTop: 8 }}>Running cost per egg <strong>{money(costPerEgg)}</strong> · ~{money(costPerEgg * 12)}/dozen. The {eggsKept} you kept cost about <strong>{money(keptCost)}</strong>.</div>}
+          {costPerEgg != null && <div style={{ ...row, marginTop: 8 }}>Cost per egg <strong>{money(costPerEgg)}</strong> (~{money(costPerEgg * 12)}/dozen) based on feed logged so far. The {eggsKept} kept for home use cost about <strong>{money(keptCost)}</strong>.</div>}
         </StatCard>}
 
         <StatCard icon="🧺" label={`Harvests · ${windowLabel}`} value={harvestBack.length} accent={C.harvest}
