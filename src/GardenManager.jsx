@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 130";
+const APP_BUILD = "2026-06-25 · build 133";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -604,7 +604,7 @@ function ZoomBar({ zoom, setZoom }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.muted }}>
       <ZoomOut size={15} color={C.fern} />
-      <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: 110, accentColor: C.fern }} />
+      <input type="range" min={1} max={4} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: 110, accentColor: C.fern }} />
       <ZoomIn size={15} color={C.fern} />
       <span style={{ minWidth: 34 }}>{Math.round(zoom * 100)}%</span>
       {zoom !== 1 && <button onClick={() => setZoom(1)} style={linkBtn}>fit</button>}
@@ -669,15 +669,32 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, set
     bgStyle = bg ? `center/contain no-repeat url(${bg})` : "transparent";
   }
   return (
-    <div ref={scrollRef} style={{ position: "relative", width: "100%", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
-      <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
-        style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: editMode ? "none" : "auto" }}>
-        {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
-        {placeholder}
-        {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
-        {children}
-        {north != null && <Compass north={north} hemi={hemi} />}
+    <div style={{ position: "relative", width: "100%" }}>
+      <div ref={scrollRef} style={{ position: "relative", width: "100%", maxHeight: "68vh", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
+        <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
+          style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: editMode ? "none" : "auto" }}>
+          {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
+          {placeholder}
+          {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
+          {children}
+          {north != null && <Compass north={north} hemi={hemi} />}
+        </div>
       </div>
+      {/* sits outside the scrolling element entirely, so it stays pinned to the visible corner instead of scrolling with the zoomed content */}
+      <MapZoomButtons zoom={zoom} setZoom={setZoom} />
+    </div>
+  );
+}
+
+function MapZoomButtons({ zoom, setZoom, min = 1, max = 4 }) {
+  if (!setZoom) return null;
+  const bstyle = { width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(38,65,47,.85)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,.35)" };
+  const step = (d) => setZoom((z) => clamp(Math.round((z + d) * 10) / 10, min, max));
+  return (
+    <div style={{ position: "absolute", bottom: 8, right: 8, zIndex: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+      <button onClick={() => step(0.5)} title="Zoom in" style={bstyle}><ZoomIn size={17} /></button>
+      <button onClick={() => step(-0.5)} title="Zoom out" style={bstyle}><ZoomOut size={17} /></button>
+      {zoom !== 1 && <button onClick={() => setZoom(1)} title="Fit to screen" style={{ ...bstyle, borderRadius: 8, fontSize: 9.5, fontWeight: 700 }}>FIT</button>}
     </div>
   );
 }
@@ -1012,7 +1029,7 @@ function useDrag(containerRef, applyPatch) {
 }
 
 // two-finger pinch zoom on a scrollable container; keeps the point between the fingers roughly still as zoom changes
-function usePinchZoom(scrollRef, zoom, setZoom, min = 1, max = 3) {
+function usePinchZoom(scrollRef, zoom, setZoom, min = 1, max = 4) {
   const gesture = useRef(null);
   const zoomRef = useRef(zoom); zoomRef.current = zoom;
   useEffect(() => {
@@ -1202,7 +1219,8 @@ function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setVie
 function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
   const wrapRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  const zoom = data.zoom ?? 1;
+  const setZoom = (v) => setData((d) => ({ ...d, zoom: typeof v === "function" ? v(d.zoom ?? 1) : v }));
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editSel, setEditSel] = useState(null);
@@ -1240,7 +1258,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
               const sections = (d.sections || []).map((s) => { const real = realOf(s.w, s.h, old); if (!real) return s; const bx = boxFromReal(real, dimM); return { ...s, x: s.x, y: s.y, ...bx }; });
               return { ...d, dimM, sections };
             })} />
-            <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>Set the property size, then size each area below (or just drag its corner) — areas draw to scale and carry their size inside. Changing the property size keeps every area, bed and plant at its set real size (they won't rescale) — just drag them back into place on the new photo.</p>
+            <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>Set the property size, then size each area with its size controls — areas draw to scale and carry their size inside. Changing the property size keeps every area, bed and plant at its set real size (they won't rescale) — just drag them back into place on the new photo.</p>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, marginBottom: 10, cursor: "pointer" }}>
               <input type="checkbox" checked={data.grayBg !== false} onChange={(e) => setData((d) => ({ ...d, grayBg: e.target.checked }))} style={{ accentColor: C.fern, width: 16, height: 16 }} />
               Fade the photo to grey so the areas stand out
@@ -1249,6 +1267,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
             <NorthControl north={data.north ?? 0} setNorth={(v) => setData((d) => ({ ...d, north: v }))} hemi={(data.place || DEFAULT_PLACE).hemisphere} />
           </div>)}
       </div>
+
 
       {editMode && data.sections.length > 0 && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s).text : "";
         return (
@@ -1328,7 +1347,8 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [hNote, setHNote] = useState("");
   const [hSel, setHSel] = useState({}); // planting key -> false means unticked
   const [editSel, setEditSel] = useState(null);
-  const [zoom, setZoom] = useState(1);
+  const zoom = section.zoom ?? 1;
+  const setZoom = (v) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, zoom: typeof v === "function" ? v(s.zoom ?? 1) : v } : s) }));
   const k = SECTION_KINDS[section.kind];
   const usesBeds = k.uses === "beds";
   const north = data.north ?? 0;
