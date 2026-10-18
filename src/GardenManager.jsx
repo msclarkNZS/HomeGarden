@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 128";
+const APP_BUILD = "2026-06-25 · build 129";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -652,8 +652,10 @@ function NorthControl({ north, setNorth, hemi = "south" }) {
   );
 }
 
-function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, north, hemi, onBg, uploading, placeholder, crop, gray, editMode = false, children }) {
+function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, setZoom, north, hemi, onBg, uploading, placeholder, crop, gray, editMode = false, children }) {
   // crop = { bg, ar, region:{x,y,w,h} } shows a sub-rectangle of a parent image
+  const scrollRef = useRef(null);
+  usePinchZoom(scrollRef, zoom, setZoom);
   let bgStyle, aspect = bg && bgAR ? `${bgAR}` : defaultAR;
   const hasImg = !!(crop && crop.bg && crop.region) || !!bg;
   if (crop && crop.bg && crop.region) {
@@ -667,7 +669,7 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, nor
     bgStyle = bg ? `center/contain no-repeat url(${bg})` : "transparent";
   }
   return (
-    <div style={{ position: "relative", width: "100%", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
+    <div ref={scrollRef} style={{ position: "relative", width: "100%", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
       <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
         style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: editMode ? "none" : "auto" }}>
         {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
@@ -1010,6 +1012,44 @@ function useDrag(containerRef, applyPatch) {
   return { onPointerDown, onPointerMove: noop, onPointerUp: noop, moved: () => movedRef.current };
 }
 
+// two-finger pinch zoom on a scrollable container; keeps the point between the fingers roughly still as zoom changes
+function usePinchZoom(scrollRef, zoom, setZoom, min = 1, max = 3) {
+  const gesture = useRef(null);
+  const zoomRef = useRef(zoom); zoomRef.current = zoom;
+  useEffect(() => {
+    const el = scrollRef.current; if (!el || typeof setZoom !== "function") return;
+    const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const onStart = (e) => {
+      if (e.touches.length !== 2) return;
+      const [t0, t1] = e.touches; const rect = el.getBoundingClientRect();
+      const midX = (t0.clientX + t1.clientX) / 2 - rect.left + el.scrollLeft;
+      const midY = (t0.clientY + t1.clientY) / 2 - rect.top + el.scrollTop;
+      const cw = el.scrollWidth || 1, ch = el.scrollHeight || 1;
+      gesture.current = { startDist: dist(t0, t1), startZoom: zoomRef.current, fracX: midX / cw, fracY: midY / ch };
+    };
+    const onMove = (e) => {
+      if (e.touches.length !== 2 || !gesture.current) return;
+      e.preventDefault();
+      const [t0, t1] = e.touches; const g = gesture.current;
+      const nz = clamp(g.startZoom * (dist(t0, t1) / g.startDist), min, max);
+      setZoom(nz);
+      requestAnimationFrame(() => {
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const midScreenX = (t0.clientX + t1.clientX) / 2 - rect.left, midScreenY = (t0.clientY + t1.clientY) / 2 - rect.top;
+        el.scrollLeft = g.fracX * el.scrollWidth - midScreenX;
+        el.scrollTop = g.fracY * el.scrollHeight - midScreenY;
+      });
+    };
+    const onEnd = (e) => { if (e.touches.length < 2) gesture.current = null; };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => { el.removeEventListener("touchstart", onStart); el.removeEventListener("touchmove", onMove); el.removeEventListener("touchend", onEnd); el.removeEventListener("touchcancel", onEnd); };
+  }, [scrollRef, setZoom, min, max]);
+}
+
 // ===================== date slider ================================
 function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
   const days = [];
@@ -1230,7 +1270,7 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
             </div>}
         </div>); })()}
 
-      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} editMode={editMode}
+      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} setZoom={setZoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} editMode={editMode}
         placeholder={!data.bg && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
             <div style={{ background: "rgba(245,243,234,.94)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "18px 20px", maxWidth: 380, boxShadow: "0 4px 16px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", alignItems: "center", color: C.ink }}>
@@ -1277,6 +1317,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [hNote, setHNote] = useState("");
   const [hSel, setHSel] = useState({}); // planting key -> false means unticked
   const [editSel, setEditSel] = useState(null);
+  const [zoom, setZoom] = useState(1);
   const k = SECTION_KINDS[section.kind];
   const usesBeds = k.uses === "beds";
   const north = data.north ?? 0;
@@ -1485,7 +1526,8 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 320px", minWidth: 280, maxWidth: mapW }}>
-          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={1} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false} editMode={editMode}
+          <div style={{ marginBottom: 8 }}><ZoomBar zoom={zoom} setZoom={setZoom} /></div>
+          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false} editMode={editMode}
             crop={(!section.bg && data.bg) ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
             placeholder={!section.bg && (usesBeds ? (section.beds || []).length === 0 : (section.plants || []).length === 0) && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 20 }}>
