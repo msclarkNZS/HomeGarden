@@ -55,6 +55,7 @@ const FEED_BY_GROUP = {
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const TALL_VEG = new Set(["Sweetcorn", "Climbing beans", "Tomato", "Brussels sprouts", "Jerusalem artichoke"]);
 const MAP_W = { compact: 420, medium: 580, large: 780, xlarge: 1040 }; // how wide the interior map/grid may grow (per area)
+const MAP_W_PHONE = { compact: 200, medium: 280, large: 360, xlarge: 460 }; // same presets, scaled down — on a phone the desktop values are all wider than the screen, so they'd otherwise have no effect
 
 // ---- companion planting (curated, common NZ home-garden crops) ----
 const COMPANION_GROUPS = {
@@ -343,7 +344,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 134";
+const APP_BUILD = "2026-06-25 · build 135";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -677,10 +678,10 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, set
           {placeholder}
           {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
           {children}
-          {north != null && <Compass north={north} hemi={hemi} />}
         </div>
       </div>
-      {/* sits outside the scrolling element entirely, so it stays pinned to the visible corner instead of scrolling with the zoomed content */}
+      {/* both sit outside the scrolling element entirely, so they stay pinned to the visible corner instead of scrolling/zooming with the content */}
+      {north != null && <Compass north={north} hemi={hemi} />}
       <MapZoomButtons zoom={zoom} setZoom={setZoom} />
     </div>
   );
@@ -1353,7 +1354,8 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const north = data.north ?? 0;
   const hemi = (data.place || DEFAULT_PLACE).hemisphere;
   const shadeDir = dirLabel((hemi === "south" ? north : north + 180) + 180);
-  const mapW = MAP_W[section.mapSize || data.mapSize] || MAP_W.medium;
+  const mapWPresets = isPhone ? MAP_W_PHONE : MAP_W;
+  const mapW = mapWPresets[section.mapSize || data.mapSize] || mapWPresets.medium;
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
 
@@ -2207,6 +2209,7 @@ const inpS = { width: "100%", boxSizing: "border-box", border: `1px solid ${C.li
 
 function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, setViewDate, display, month }) {
   const lib = useLib();
+  const isPhone = useIsPhone();
   const [selMode, setSelMode] = useState(false);
   const [selSet, setSelSet] = useState(() => new Set());
   const [picker, setPicker] = useState(null); // null | "plant" | "plannext"
@@ -2222,7 +2225,8 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const patchBed = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, beds: s.beds.map((b) => b.id === bed.id ? { ...b, ...p } : b) }) }));
   const sectionReal = realOf(section.w, section.h, data.dimM);
   const bedReal = realOf(bed.w, bed.h, sectionReal);
-  const mapW = MAP_W[bed.mapSize || section.mapSize || data.mapSize] || MAP_W.medium;
+  const mapWPresets = isPhone ? MAP_W_PHONE : MAP_W;
+  const mapW = mapWPresets[bed.mapSize || section.mapSize || data.mapSize] || mapWPresets.medium;
   const byStage = data.colourBy === "stage";
 
   // fine grid + plantings (migrate-on-open if a bed somehow still lacks them)
@@ -2422,7 +2426,8 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
               <span style={{ fontSize: 12, color: C.ink, lineHeight: 1.45 }}>Companion clash here: <strong>{pairs.join("; ")}</strong> — they tend not to thrive side by side.</span>
             </div>); })()}
 
-          {/* the fine grid */}
+          {/* the fine grid — capped height so a long, narrow bed scrolls inside this box rather than stretching the whole page */}
+          <div style={{ maxHeight: "60vh", overflow: "auto", borderRadius: 10 }}>
           <div ref={gridRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
             style={{ position: "relative", display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: grid.gw > 18 ? 1 : 2, background: C.soil, padding: 5, borderRadius: 10, aspectRatio: `${grid.gw} / ${grid.gh}`, touchAction: selMode ? "none" : "auto", userSelect: "none" }}>
             {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
@@ -2449,6 +2454,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
                 return <span key={id} style={{ position: "absolute", left: `${cx}%`, top: `${cy}%`, transform: "translate(-50%,-50%)", pointerEvents: "none", fontSize: 9.5, fontWeight: 600, lineHeight: 1.1, color: "#fff", background: hexA(C.fernDk, .74), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap", maxWidth: "92%", overflow: "hidden", textOverflow: "ellipsis", textShadow: "0 1px 2px rgba(0,0,0,.5)", opacity: dim ? .25 : 1, boxShadow: selPlanting && selPlanting.id === id ? "0 0 0 1.5px #fff" : "none" }}>{p.plant}</span>;
               });
             })()}
+          </div>
           </div>
           <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
             {selMode ? "Tap squares or drag to paint a selection, then choose an action above." : `Each square ≈ ${grid.sq} m. Tap a planting to open it, or “Select squares” to plant/clear an area.`}
