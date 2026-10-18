@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 129";
+const APP_BUILD = "2026-06-25 · build 130";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -993,8 +993,7 @@ function useDrag(containerRef, applyPatch) {
       if (e.cancelable) e.preventDefault();
       const dx = (pdx / d.rect.width) * 100;
       const dy = (pdy / d.rect.height) * 100;
-      if (d.mode === "move") applyRef.current(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
-      else applyRef.current(d.id, { w: clamp(d.w + dx, 8, 100 - d.x), h: clamp(d.h + dy, 8, 100 - d.y) });
+      applyRef.current(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
     };
     const up = () => { if (!ref.current) return; ref.current = null; setTimeout(() => { movedRef.current = false; }, 0); };
     window.addEventListener("pointermove", move, { passive: false });
@@ -1262,9 +1261,22 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
                 <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
                 <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
               </div>
+              {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => {
+                  const oldSectionReal = realOf(s.w, s.h, data.dimM);
+                  const b = boxFromReal(real, data.dimM);
+                  const patch = { ...b };
+                  if (oldSectionReal) {
+                    // the area just resized — keep every bed & plant inside at its own real-world size rather than stretching with it
+                    if (s.beds?.length) patch.beds = s.beds.map((bed) => { const r = realOf(bed.w, bed.h, oldSectionReal); return r ? { ...bed, ...boxFromReal(r, real) } : bed; });
+                    if (s.plants?.length) patch.plants = s.plants.map((p) => {
+                      if (p.shape === "hedge") { const r = realOf(p.w, p.h, oldSectionReal); return r ? { ...p, ...boxFromReal(r, real) } : p; }
+                      const diaM = (p.dia ?? 12) / 100 * oldSectionReal.w; return { ...p, dia: clamp(diaM / real.w * 100, 2, 80) };
+                    });
+                  }
+                  patchSection(s.id, patch);
+                }} />
+                : <PctSizeFields w={s.w} h={s.h} onChange={({ w, h }) => patchSection(s.id, { w: clamp(w, 2, 100), h: clamp(h, 2, 100) })} />}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => { const b = boxFromReal(real, data.dimM); patchSection(s.id, b); }} />
-                  : <span style={{ fontSize: 12, color: C.beet }}>Set the whole-property size first to size this in metres.</span>}
                 <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />
               </div>
             </div>}
@@ -1290,7 +1302,6 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
                 <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
-                {editMode && !s.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, s, "resize")} style={{ cursor: "nwse-resize", padding: "6px 6px 2px 12px", margin: "-6px -4px -2px 0", fontSize: 15, lineHeight: 1, touchAction: "none", textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>⌟</span>}
               </div>
             </div>
           ); })}
@@ -1444,9 +1455,9 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                 <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
                 <ConfirmButton onConfirm={() => { patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) }); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
               </div>
+              {sectionReal ? <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />
+                : <PctSizeFields w={b.w} h={b.h} onChange={({ w, h }) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, w: clamp(w, 2, 100), h: clamp(h, 2, 100) } : x) })} />}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {sectionReal ? <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />
-                  : <span style={{ fontSize: 12, color: C.beet }}>Set the property &amp; area sizes first to size beds in metres.</span>}
                 <RotateField rot={b.rot} onChange={(rot) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, rot } : x) })} />
                 {(() => { const br = realOf(b.w, b.h, sectionReal); if (!br) return null;
                   const curSq = b.sq || 0.25; const other = curSq === 0.25 ? 0.5 : 0.25; const ng = bedFineGrid({ ...b, sq: curSq }, br);
@@ -1484,7 +1495,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                     <input type="number" min="0" step="0.5" value={Math.round((p.h ?? 8) / 100 * sectionReal.l * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { h: clamp(m / sectionReal.l * 100, 2, 100) }); }} title="width (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
                     <span style={{ fontSize: 11, color: C.muted }}>m</span>
                   </span>
-                ) : <span style={{ fontSize: 11.5, color: C.muted }}>drag ⌟ to size</span>) : (sectionReal?.w ? (
+                ) : <PctSizeFields w={p.w ?? 30} h={p.h ?? 8} onChange={({ w, h }) => patchItem(p.id, { w: clamp(w, 2, 100), h: clamp(h, 2, 100) })} />) : (sectionReal?.w ? (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <input type="number" min="0" step="0.5" value={Math.round((p.dia ?? 12) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { dia: clamp(m / sectionReal.w * 100, 2, 80) }); }} title="canopy ⌀ (m)" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
                     <span style={{ fontSize: 11, color: C.muted }}>m ⌀</span>
@@ -1567,7 +1578,6 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                     <span style={{ fontSize: 10, fontWeight: 600, opacity: .97, textShadow: "0 1px 2px rgba(0,0,0,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {fillLabel}{!isPhone && dim ? ` · ${dim}` : ""}
                     </span>
-                    {editMode && !b.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, b, "resize")} style={{ cursor: "nwse-resize", fontSize: 15, lineHeight: 1, color: "#fff", padding: "6px 4px 2px 12px", margin: "-6px -2px -2px 0", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,.6)", flexShrink: 0 }}>⌟</span>}
                   </div>
                 </div>); })}
 
@@ -1581,7 +1591,6 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   <div key={p.id} onPointerDown={down} onClick={select}
                     style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
                     <span style={{ fontSize: 10.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 8px" }}>{p.plant} hedge</span>
-                    {editMode && !p.rot && <span onClick={(e) => e.stopPropagation()} onPointerDown={(e) => drag.onPointerDown(e, p, "resize")} style={{ position: "absolute", right: 0, bottom: 0, cursor: "nwse-resize", fontSize: 15, lineHeight: 1, color: "#fff", padding: "6px 4px 4px 12px", touchAction: "none", textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>⌟</span>}
                   </div>);
               }
               const isBush = p.icon === "bush" || p.icon === "cane";
@@ -1625,18 +1634,33 @@ function RotateField({ rot, onChange }) {
 }
 
 function SizeFields({ label, dim, onChange }) {
-  const w = dim?.w ?? "", l = dim?.l ?? "";
-  const set = (k, v) => onChange({ ...(dim || {}), [k]: v === "" ? undefined : Number(v) });
-  const area = (Number(w) > 0 && Number(l) > 0) ? (Number(w) * Number(l)).toFixed(1) : null;
+  const [draft, setDraft] = useState({ w: dim?.w ?? "", l: dim?.l ?? "" });
+  useEffect(() => { setDraft({ w: dim?.w ?? "", l: dim?.l ?? "" }); }, [dim?.w, dim?.l]);
+  const validDraft = Number(draft.w) > 0 && Number(draft.l) > 0;
+  const dirty = validDraft && (Number(draft.w) !== Number(dim?.w || 0) || Number(draft.l) !== Number(dim?.l || 0));
+  const apply = () => { if (validDraft) onChange({ w: Number(draft.w), l: Number(draft.l) }); };
+  const area = validDraft ? (Number(draft.w) * Number(draft.l)).toFixed(1) : null;
   const inp = { width: 70, boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 8px", fontSize: 13, background: C.panel2, fontFamily: "inherit", color: C.ink };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>
       <Ruler size={14} color={C.fern} />
       <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>{label}</span>
-      <input type="number" min="0" step="0.5" value={w} onChange={(e) => set("w", e.target.value)} placeholder="width" style={inp} />
+      <input type="number" min="0" step="0.5" value={draft.w} onChange={(e) => setDraft((d) => ({ ...d, w: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder="width" style={inp} />
       <span style={{ color: C.muted }}>×</span>
-      <input type="number" min="0" step="0.5" value={l} onChange={(e) => set("l", e.target.value)} placeholder="length" style={inp} />
+      <input type="number" min="0" step="0.5" value={draft.l} onChange={(e) => setDraft((d) => ({ ...d, l: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder="length" style={inp} />
       <span style={{ fontSize: 12, color: C.muted }}>m{area ? ` · ${area} m²` : ""}</span>
+      {dirty && <button onClick={apply} style={{ ...btn(C.fern), padding: "6px 11px", fontSize: 12.5 }}>Apply</button>}
+    </div>
+  );
+}
+
+// slider-based size entry for when real-world dimensions aren't set up yet — a percentage of the parent, applied immediately (no Apply needed, since dragging doesn't have the "clear to retype" problem)
+function PctSizeFields({ w, h, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>
+      <Ruler size={14} color={C.fern} />
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.muted }}>W <input type="range" min={2} max={100} value={w} onChange={(e) => onChange({ w: Number(e.target.value), h })} style={{ width: 80, accentColor: C.fern }} /> <span style={{ minWidth: 30 }}>{Math.round(w)}%</span></span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.muted }}>H <input type="range" min={2} max={100} value={h} onChange={(e) => onChange({ w, h: Number(e.target.value) })} style={{ width: 80, accentColor: C.fern }} /> <span style={{ minWidth: 30 }}>{Math.round(h)}%</span></span>
     </div>
   );
 }
