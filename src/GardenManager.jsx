@@ -343,7 +343,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 133";
+const APP_BUILD = "2026-06-25 · build 134";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -954,28 +954,27 @@ export default function GardenManager() {
   return (
     <LibCtx.Provider value={lib}>
     <div style={{ fontFamily: body, background: C.bg, color: C.ink, minHeight: 620, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.line}` }}>
-      <header style={{ background: C.fernDk, color: "#F1EEE2", padding: "calc(16px + env(safe-area-inset-top, 0px)) 20px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Leaf size={22} color={C.sageSoft} />
-          <div style={{ flex: 1 }}>
+      <header style={{ background: C.fernDk, color: "#F1EEE2", padding: `calc(${isPhone ? 10 : 16}px + env(safe-area-inset-top, 0px)) ${isPhone ? 14 : 20}px ${isPhone ? 10 : 16}px` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isPhone ? 8 : 10 }}>
+          <Leaf size={isPhone ? 19 : 22} color={C.sageSoft} />
+          <div style={{ flex: 1, minWidth: 0 }}>
             <input value={data.propertyName} onChange={(e) => update({ propertyName: e.target.value })}
-              style={{ fontFamily: display, fontSize: 22, fontWeight: 600, background: "transparent", border: "none", color: "#F4F1E6", width: "100%", outline: "none" }} />
-            <div style={{ fontSize: 12.5, color: C.sageSoft, letterSpacing: .3 }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()}</div>
+              style={{ fontFamily: display, fontSize: isPhone ? 18 : 22, fontWeight: 600, background: "transparent", border: "none", color: "#F4F1E6", width: "100%", outline: "none" }} />
+            <div style={{ fontSize: isPhone ? 11 : 12.5, color: C.sageSoft, letterSpacing: .3, display: "flex", alignItems: "center", gap: 5, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{place.name}{place.region ? ` · ${place.region}` : ""} · {seasonOf(month, hemi)} · {MONTHS[month-1]} {now.getFullYear()}</span>
+              {cloud?.session && <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: sync.state === "error" ? C.harvest : sync.state === "syncing" ? "#E7C24B" : C.sageSoft }} title={sync.state === "syncing" ? "Syncing…" : sync.state === "error" ? "Sync error — will retry" : "Synced across your devices"} />}
+            </div>
           </div>
-          <button onClick={doUndo} disabled={!canUndo} title="Undo last change" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: canUndo ? "pointer" : "default", color: "#F1EEE2", opacity: canUndo ? 1 : .4, display: "inline-flex" }}><Undo2 size={18} /></button>
-          <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex" }}><Settings size={18} /></button>
+          <button onClick={doUndo} disabled={!canUndo} title="Undo last change" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: isPhone ? 7 : 8, cursor: canUndo ? "pointer" : "default", color: "#F1EEE2", opacity: canUndo ? 1 : .4, display: "inline-flex", flexShrink: 0 }}><Undo2 size={isPhone ? 16 : 18} /></button>
+          <button onClick={() => setShowPlace(true)} title="Location & settings" style={{ background: "rgba(255,255,255,.12)", border: "none", borderRadius: 9, padding: isPhone ? 7 : 8, cursor: "pointer", color: "#F1EEE2", display: "inline-flex", flexShrink: 0 }}><Settings size={isPhone ? 16 : 18} /></button>
         </div>
-        {cloud?.session && <div style={{ fontSize: 11, color: C.sageSoft, marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sync.state === "error" ? C.harvest : sync.state === "syncing" ? "#E7C24B" : C.sageSoft }} />
-          {sync.state === "syncing" ? "Syncing…" : sync.state === "error" ? "Sync error — will retry" : sync.at ? "Synced across your devices" : "Synced"}
-        </div>}
       </header>
 
-      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", ...(isPhone ? { flexWrap: "wrap" } : { overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }) }}>
+      <nav style={{ display: "flex", gap: 2, background: C.fern, padding: "0 8px", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
         {TABS.map((t) => { const on = tab === t.id; const Icon = t.icon; return (
           <button key={t.id} onClick={() => { setTab(t.id); setSel(null); }}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", cursor: "pointer", padding: "11px 14px", fontSize: 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flex: isPhone ? "1 1 auto" : "0 0 auto" }}>
-            <Icon size={16} /> {t.label}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", cursor: "pointer", padding: isPhone ? "9px 11px" : "11px 14px", fontSize: isPhone ? 12.5 : 13.5, fontWeight: 600, fontFamily: body, color: on ? C.fernDk : "#DfE6D8", background: on ? C.bg : "transparent", borderRadius: on ? "8px 8px 0 0" : 0, marginTop: on ? 4 : 0, whiteSpace: "nowrap", flex: "0 0 auto" }}>
+            <Icon size={isPhone ? 14.5 : 16} /> {t.label}
           </button>); })}
       </nav>
 
