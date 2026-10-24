@@ -189,6 +189,7 @@ const FRUIT = [
   { name:"Persimmon", group:"Subtropical", plant:"Bare-root Jun–Aug", harvest:"Apr–Jun", hmon:[4,5,6], prune:"Winter, lightly", feed:"Compost early spring", note:"Astringent types need to go soft-ripe; non-astringent (Fuyu) eat crisp.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
   { name:"Olive", group:"Subtropical", plant:"Spring", harvest:"May–Jun", hmon:[5,6], prune:"After harvest", feed:"Compost early spring", note:"Loves sun and sharp drainage; drought-hardy once established. Fruit needs curing.", tasks:[{name:"Prune after harvest",months:[7,8]},{name:"Feed",months:[9]}] },
   { name:"Fig", group:"Subtropical", plant:"Winter (dormant)", harvest:"Feb–Apr", hmon:[2,3,4], prune:"Winter, lightly", feed:"Light compost spring", note:"Thrives warm & dry; container-growing curbs its vigour.", tasks:[{name:"Winter prune",months:[7]},{name:"Feed",months:[9]}] },
+  { name:"Pomegranate", group:"Subtropical", plant:"Spring", harvest:"Apr–May", hmon:[4,5], prune:"Winter, lightly — remove suckers", feed:"Light compost spring", note:"Wants full sun and shelter — a warm, sheltered spot helps fruit ripen and colour well here. Heavy rain near harvest can split the fruit; remove root suckers each winter.", tasks:[{name:"Winter prune & remove suckers",months:[7]},{name:"Feed",months:[9]}] },
   { name:"Lemon", group:"Citrus", plant:"Spring", harvest:"Most of year (peak winter)", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food early spring & late summer", note:"Frost-tender when young — shelter it; mulch, never let it dry.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[3]}] },
   { name:"Lemonade", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[5,6,7,8], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"Sweeter than a lemon, eaten fresh; among the hardier citrus.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Light prune",months:[3]}] },
   { name:"Lime", group:"Citrus", plant:"Spring", harvest:"Autumn–winter", hmon:[4,5,6,7], prune:"Light, after fruiting", feed:"Citrus food spring & late summer", note:"The most frost-tender citrus — warm sheltered wall or a pot you can move.", tasks:[{name:"Citrus feed",months:[9,2]},{name:"Frost protection",months:[6,7]}] },
@@ -344,7 +345,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 135";
+const APP_BUILD = "2026-06-25 · build 138";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1821,7 +1822,11 @@ function AreaStock({ data, setData, section, display }) {
   const rememberBreed = (species, val) => { const v = (val || "").trim(); if (!v || breedOptions(species).includes(v)) return;
     setData((d) => ({ ...d, customBreeds: { ...(d.customBreeds || {}), [species]: [...(((d.customBreeds || {})[species]) || []), v] } })); };
   const patchMob = (id, p) => patchSection({ mobs: mobs.map((m) => m.id === id ? { ...m, ...p } : m) });
-  const removeMob = (id) => { patchSection({ mobs: mobs.filter((m) => m.id !== id) }); setSelMobId(null); setOpenAnimal(null); };
+  const removeMob = (id) => {
+    const mob = mobs.find((m) => m.id === id);
+    const leftover = (mob?.individuals || []).map((a) => ({ ...a, species: mob.species, klass: a.klass || mob.klass, fromMob: mob.name || SPECIES[mob.species]?.label, fromArea: section.name, status: "removed", archived: todayISO() }));
+    setData((d) => ({ ...d, archive: [...(d.archive || []), ...leftover], sections: d.sections.map((s) => s.id !== section.id ? s : { ...s, mobs: (s.mobs || []).filter((m) => m.id !== id) }) }));
+    setSelMobId(null); setOpenAnimal(null); };
   const addMob = () => { const sp = SPECIES[f.species]; if (!sp) return; const klass = f.klass || sp.classes[0]; const n = f.count === "" ? 0 : Math.max(0, Number(f.count) || 0); const breed = f.breed.trim();
     const individuals = Array.from({ length: n }, (_, i) => ({ id: uid(), name: `${klass} ${i + 1}`, klass, breed, born: "", notes: "", ferts: [] }));
     const m = { id: uid(), species: f.species, klass, breed, name: f.name.trim(), placed: todayISO(), notes: "", ferts: [], history: [], individuals };
@@ -2090,7 +2095,8 @@ function AreaStock({ data, setData, section, display }) {
                       style={{ width: "100%", minHeight: 40, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
 
                     <div style={{ marginTop: 10 }}>
-                      <ConfirmButton onConfirm={() => removeMob(m.id)} style={{ ...btnOutline(C.beet), width: "100%", justifyContent: "center" }} armedLabel="Remove this mob?"><Trash2 size={14} /> Remove mob</ConfirmButton>
+                      <ConfirmButton onConfirm={() => removeMob(m.id)} style={{ ...btnOutline(C.beet), width: "100%", justifyContent: "center" }} armedLabel={(m.individuals || []).length ? `Remove mob — ${m.individuals.length} animal${m.individuals.length === 1 ? "" : "s"} will be archived?` : "Remove this mob?"}><Trash2 size={14} /> Remove mob</ConfirmButton>
+                      {(m.individuals || []).length > 0 && <p style={{ fontSize: 11, color: C.muted, margin: "5px 0 0", lineHeight: 1.4 }}>This mob still has {m.individuals.length} animal{m.individuals.length === 1 ? "" : "s"} in it. Move them to another mob first if you want to keep using them — otherwise they'll be archived (not lost) when the mob is removed.</p>}
                     </div>
                   </div>)}
               </div>); })}
@@ -2214,6 +2220,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
   const [selSet, setSelSet] = useState(() => new Set());
   const [picker, setPicker] = useState(null); // null | "plant" | "plannext"
   const [editSqId, setEditSqId] = useState(null); // planting id whose squares are being edited
+  const [splitSqId, setSplitSqId] = useState(null); // planting id being split; selected squares peel off into their own planting
   const [palQ, setPalQ] = useState("");
   const [hover, setHover] = useState(null);
   const greenhouse = section.kind === "greenhouse";
@@ -2315,6 +2322,23 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
     next = next.map((p) => p.id === editSqId ? { ...p, cells: [...active, ...keptRemoved], covers } : p);
     commit(next); setEditSqId(null); setSelMode(false); clearSel(); setPicker(null);
     setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: editSqId }); };
+
+  // --- split some of a planting's squares into their own independent planting (e.g. to give them a different variety) ---
+  const startSplit = (p) => { setSplitSqId(p.id); setSelMode(true); setPicker(null); setSel(null); setSelSet(new Set()); };
+  const cancelSplit = () => { setSplitSqId(null); setSelMode(false); clearSel(); setPicker(null); };
+  const applySplit = () => { const me = plantings.find((p) => p.id === splitSqId); if (!me) { cancelSplit(); return; }
+    const liveCells = (me.cells || []).filter((c) => !c.removed);
+    const takenXY = liveCells.filter((c) => selSet.has(keyOf(c.x, c.y)));
+    if (!takenXY.length || takenXY.length === liveCells.length) { cancelSplit(); return; } // nothing picked, or picked the whole thing — not a split
+    const takenSet = new Set(takenXY.map((c) => keyOf(c.x, c.y)));
+    const remainingCells = (me.cells || []).filter((c) => !takenSet.has(keyOf(c.x, c.y)));
+    const movedCells = takenXY.map((c) => ({ x: c.x, y: c.y, removed: null }));
+    const myCovers = me.covers || [];
+    const newP = { id: uid(), plant: me.plant, fam: me.fam, variety: me.variety, planted: me.planted, sown: me.sown, ferts: [], notes: "", cells: movedCells, covers: myCovers.filter((cv) => takenSet.has(keyOf(cv.x, cv.y))) };
+    const updatedMe = { ...me, cells: remainingCells, covers: myCovers.filter((cv) => !takenSet.has(keyOf(cv.x, cv.y))) };
+    commit([...plantings.filter((p) => p.id !== me.id), updatedMe, newP]);
+    setSplitSqId(null); setSelMode(false); clearSel(); setPicker(null);
+    setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: newP.id }); };
   const nextGroupAfter = (famKey) => { const g = famKey ? FAMILIES[famKey]?.group : null; return (!g || g === "flexible") ? "legume" : ROTATION_SEQUENCE[(ROTATION_SEQUENCE.indexOf(g) + 1) % ROTATION_SEQUENCE.length]; };
   const planFor = (p) => { const g = nextGroupAfter(p.fam); const meta = lib.vegByName(p.plant);
     const hm = (meta?.d && p.planted) ? (new Date(addDays(p.planted, meta.d)).getMonth() + 1) : month;
@@ -2376,10 +2400,19 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button onClick={() => { setSelMode(true); setSel(null); }} style={btn(C.fern)}><Grid3x3 size={14} /> Select squares</button>
                 {selPlanting && <button onClick={() => startEditSquares(selPlanting)} style={btnOutline(C.fern)}><Grid3x3 size={14} /> Edit {selPlanting.plant} squares</button>}
+                {selPlanting && liveSquares(selPlanting) > 1 && <button onClick={() => startSplit(selPlanting)} style={btnOutline(C.soil)}><Scissors size={14} /> Split off a square</button>}
               </div>
             ) : (
               <div style={{ ...card, padding: 10, background: C.panel2 }}>
-                {editSqId ? (() => { const me = plantings.find((p) => p.id === editSqId); return (
+                {splitSqId ? (() => { const me = plantings.find((p) => p.id === splitSqId); const n = (me?.cells || []).filter((c) => !c.removed).length; return (
+                  <div>
+                    <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>Splitting off <span style={{ color: C.fern }}>{me?.plant}</span> — tap the square{n === 1 ? "" : "s"} you want to give their own variety (not all {n}).</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button onClick={applySplit} disabled={!selSet.size || selSet.size === n} style={{ ...btn(C.soil), opacity: (selSet.size && selSet.size !== n) ? 1 : .4 }}><Scissors size={14} /> Split off {selSet.size || ""}</button>
+                      <button onClick={cancelSplit} style={btnOutline(C.muted)}><X size={13} /> Cancel</button>
+                    </div>
+                    <p style={{ fontSize: 11, color: C.muted, margin: "6px 0 0", lineHeight: 1.5 }}>The squares you pick become a brand new planting of the same crop — same date, but its own variety and notes from here on. The rest stay as they are.</p>
+                  </div>); })() : editSqId ? (() => { const me = plantings.find((p) => p.id === editSqId); return (
                   <div>
                     <div style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600, marginBottom: 6 }}>Editing squares for <span style={{ color: C.fern }}>{me?.plant}</span> — {selSet.size} square{selSet.size === 1 ? "" : "s"}. Tap to add or remove.</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2426,8 +2459,10 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
               <span style={{ fontSize: 12, color: C.ink, lineHeight: 1.45 }}>Companion clash here: <strong>{pairs.join("; ")}</strong> — they tend not to thrive side by side.</span>
             </div>); })()}
 
-          {/* the fine grid — capped height so a long, narrow bed scrolls inside this box rather than stretching the whole page */}
-          <div style={{ maxHeight: "60vh", overflow: "auto", borderRadius: 10 }}>
+          {/* the fine grid — capped height so a long, narrow bed scrolls inside this box rather than stretching the whole page.
+              Not capped while actively painting a selection: that drag disables scrolling (so it doesn't fight the paint
+              gesture), which would otherwise trap you unable to reach squares below the fold mid-drag. */}
+          <div style={{ maxHeight: selMode ? "none" : "60vh", overflow: selMode ? "visible" : "auto", borderRadius: 10 }}>
           <div ref={gridRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
             style={{ position: "relative", display: "grid", gridTemplateColumns: `repeat(${grid.gw},1fr)`, gridTemplateRows: `repeat(${grid.gh},1fr)`, gap: grid.gw > 18 ? 1 : 2, background: C.soil, padding: 5, borderRadius: 10, aspectRatio: `${grid.gw} / ${grid.gh}`, touchAction: selMode ? "none" : "auto", userSelect: "none" }}>
             {Array.from({ length: grid.gw * grid.gh }).map((_, i) => {
@@ -4631,7 +4666,7 @@ function ReportView({ data, setData, month, hemi, display }) {
           {treatList.length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Treatments &amp; events · {windowLabel}</div>
             {treatList.slice(0, 30).map((t, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {fmtDate(t.date)} {STOCK_LOG[t.type]?.icon || (t.type === "task" ? "✅" : "•")} <strong>{t.sp}</strong> ({t.mob}): {STOCK_LOG[t.type]?.label || (t.type === "task" ? "Planned job" : t.type)}{t.what && t.what !== STOCK_LOG[t.type]?.label ? ` — ${t.what}` : ""}{t.qty != null ? ` — ${t.qty}${t.unit ? " " + t.unit : ""}` : ""}{t.n > 1 ? ` ·×${t.n}` : ""}</div>)}</>}
           {(data.archive || []).length > 0 && <><div style={{ fontSize: 11.5, color: C.muted, fontWeight: 600, margin: "8px 0 2px" }}>Past animals</div>
-            {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : a.status === "culled" ? `🥩 culled${a.meat ? ` · ${a.meat.qty} ${a.meat.unit}` : ""}` : "❌ died"} {fmtDate(a.archived)}</div>)}</>}
+            {[...data.archive].sort((a, b) => (b.archived || "").localeCompare(a.archived || "")).slice(0, 30).map((a, i) => <div key={i} style={{ ...row, fontSize: 12.5 }}>• {SPECIES[a.species]?.emoji} <strong>{a.name}</strong> ({a.klass}) — {a.status === "sold" ? "🏷️ sold" : a.status === "culled" ? `🥩 culled${a.meat ? ` · ${a.meat.qty} ${a.meat.unit}` : ""}` : a.status === "removed" ? "📦 mob removed" : a.status === "died" ? "❌ died" : a.status} {fmtDate(a.archived)}</div>)}</>}
         </StatCard>}
 
         {hasChooks && <StatCard icon="💰" label={`Net · ${windowLabel}`} value={money(net)} accent={net >= 0 ? C.fern : C.beet}
