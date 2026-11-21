@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bird, Move
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bird, Move, Crosshair
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -407,6 +407,19 @@ function mobsToArchive(section) {
   return (section.mobs || []).flatMap((mob) => (mob.individuals || []).map((a) => ({ ...a, species: mob.species, klass: a.klass || mob.klass, fromMob: mob.name || SPECIES[mob.species]?.label, fromArea: section.name, status: "removed", archived: todayISO() })));
 }
 
+// where to drop a new tree so it never lands on top of the ones already there: the centre if it's free, otherwise the nearest free
+// spot spiralling outwards (positions are % of the map)
+function nextTreeSpot(plants, dia = 12) {
+  const gap = Math.max(7, dia * 0.9);
+  const free = (x, y) => (plants || []).every((p) => Math.hypot((p.x ?? 0) - x, (p.y ?? 0) - y) >= gap);
+  if (free(50, 50)) return { x: 50, y: 50 };
+  for (let r = gap; r <= 46; r += gap * 0.6) {
+    const n = Math.max(6, Math.round(2 * Math.PI * r / gap));
+    for (let i = 0; i < n; i++) { const a = (2 * Math.PI * i) / n, x = 50 + r * Math.cos(a), y = 50 + r * Math.sin(a); if (x >= 4 && x <= 96 && y >= 4 && y <= 96 && free(x, y)) return { x, y }; }
+  }
+  return { x: 50, y: 50 };
+}
+
 // --- moving trees between areas (for merging areas) ---
 const plantAreas = (sections) => sections.filter((s) => SECTION_KINDS[s.kind]?.uses === "plants");
 // move plants from one plant area to another, keeping each at the same spot on the property and the same real size
@@ -443,11 +456,20 @@ function sectionCountLabel(s, all) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 146";
+const APP_BUILD = "2026-06-25 · build 148";
+const BUILD_NUM = Number((APP_BUILD.match(/build (\d+)/) || [])[1]) || 0;
+// SCHEMA_VERSION: raise this whenever saved data changes shape in a way an OLDER copy of the app would mangle (a new kind of area,
+// a new nesting rule…). Every save is stamped with it; a copy of the app that meets data from a newer layout refuses to save over it.
+// 1 = everything up to the scattered-trees area; 2 = scattered-trees area + chicken zones.
+const SCHEMA_VERSION = 2;
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayISO = () => isoOf(new Date());
+// A calendar day, as "YYYY-MM-DD": a stored date string as-is, or a Date's LOCAL day. Plantings are compared by DAY, never by instant:
+// "2026-11-30" parses as midnight UTC, which in NZ is 1pm local — so anything dated today looked "in the future" (hidden, or marked
+// planned) every morning until the afternoon.
+const dayStr = (v) => !v ? "" : typeof v === "string" ? v.slice(0, 10) : isoOf(v);
 const fmtDate = (iso) => { if (!iso) return "—"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
 const addDays = (iso, n) => { const d = new Date(iso); d.setDate(d.getDate() + n); return isoOf(d); };
 const dayKey = (d) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
@@ -533,8 +555,14 @@ function normalize(d) {
   base.sections = base.sections.map((s) => ({ ...s, beds: (s.beds || []).map((b) => b.plantings ? { ...b, plantings: b.plantings.map((p) => (p.planned && !p.confirmed && p.planted && p.planted <= todayISO()) ? { ...p, planted: _tomorrow } : p) } : b) }));
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
-  { const known = new Set(base.sections.map((s) => s.id));
-    base.sections = base.sections.map((s) => { if (!s.parentId || known.has(s.parentId)) return s; const { parentId, ...rest } = s; return { ...rest, x: 40, y: 40, w: 8, h: 8 }; }); }
+  { // an out-of-date copy of the app can drop a chicken zone but keep the coops inside it. Rebuild the zone so they're grouped again
+    // (their layout inside it is intact; only the zone's own position/size on the property is lost, so it returns mid-map to be placed).
+    const known = new Set(base.sections.map((s) => s.id)); const missing = [];
+    base.sections.forEach((s) => { if (s.parentId && !known.has(s.parentId) && !missing.includes(s.parentId)) missing.push(s.parentId); });
+    if (missing.length) {
+      lastRepairs.zones += missing.length;
+      base.sections = [...base.sections, ...missing.map((pid, i) => ({ id: pid, name: "Chicken zone (restored)", kind: "zone", x: 28 + i * 4, y: 28 + i * 4, w: 24, h: 24, bg: null, beds: [], plants: [], mobs: [] }))];
+    } }
   // Areas show a live crop of the property photo; older builds saved a per-area image.
   // Strip those leftovers so every area falls back to the crop consistently.
   base.sections = base.sections.map((s) => { const { bg, bgAR, ...rest } = s;
@@ -548,12 +576,116 @@ function normalize(d) {
   return base;
 }
 
+// ---- version guard: stop an out-of-date copy of the app from saving over data a newer copy has written ----
+const schemaOf = (d) => Number(d && d.schemaVersion) || 1;
+const buildOf = (d) => Number(d && d.savedByBuild) || 0;
+const stampOf = (d) => ({ ...d, schemaVersion: SCHEMA_VERSION, savedByBuild: BUILD_NUM });
+// hard = the data uses a newer layout than this copy understands (opening + saving it could scramble it)
+// soft = saved by a newer build, but a layout we understand
+function versionStatus(d) {
+  if (!d || typeof d !== "object") return null;
+  if (schemaOf(d) > SCHEMA_VERSION) return { level: "hard", build: buildOf(d) };
+  if (buildOf(d) > BUILD_NUM) return { level: "soft", why: "data", build: buildOf(d) };
+  return null;
+}
+// an out-of-date copy drops areas it doesn't know (a chicken zone) but keeps the coops that were inside it
+function hasOrphanedCoops(d) { const secs = (d && d.sections) || []; const ids = new Set(secs.map((x) => x.id)); return secs.some((x) => x.parentId && !ids.has(x.parentId)); }
+
+let writeLocked = false;      // once set, nothing is saved or pushed until the app is reloaded with a newer build
+let noticeSink = null, pendingNotice = null;
+const emitNotice = (n) => { if (n.level === "hard") writeLocked = true; if (!(pendingNotice && pendingNotice.level === "hard" && n.level !== "hard")) pendingNotice = n; if (noticeSink) noticeSink(n); };
+let localHadOrphans = false;  // our own stored copy had coops cut off from their zone
+let lastRepairs = { zones: 0 }; // what normalize() had to rebuild, so the app can tell the person
+
+// read the version stamp straight out of the stored text (cheap — no need to parse a multi-MB garden on every save)
+const peekStamp = (txt) => { const a = /"schemaVersion":\s*(\d+)/.exec(txt || ""), b = /"savedByBuild":\s*(\d+)/.exec(txt || ""); return { schemaVersion: a ? Number(a[1]) : 1, savedByBuild: b ? Number(b[1]) : 0 }; };
+
+function inspectLoaded(raw) {
+  const st = versionStatus(raw);
+  if (st) emitNotice(st.level === "hard" ? st : { level: "soft", why: "data", build: st.build });
+  if (hasOrphanedCoops(raw)) localHadOrphans = true;
+}
 async function loadData() {
-  try { const v = await rawGet(KEY); if (v) return normalize(JSON.parse(v)); } catch (e) {}
+  try { const v = await rawGet(KEY); if (v) { const raw = JSON.parse(v); inspectLoaded(raw); return normalize(raw); } } catch (e) {}
   try { const old = await rawGet("glenbrook-garden:v1"); if (old) return normalize(JSON.parse(old)); } catch (e) {}
   return blank;
 }
-async function saveData(d) { try { await rawSet(KEY, JSON.stringify(d)); } catch (e) { console.error(e); } }
+async function saveData(d) {
+  if (writeLocked) return;
+  try {
+    // look at what's already stored before overwriting it: another tab or device running a newer app may have saved since we loaded
+    const cur = await rawGet(KEY);
+    if (cur) { const st = versionStatus(peekStamp(cur)); if (st && st.level === "hard") { emitNotice(st); return; } }
+    if (writeLocked) return;
+    await rawSet(KEY, JSON.stringify(stampOf(d)));
+  } catch (e) { console.error(e); }
+}
+
+// fetch the latest app files, bypassing every cache, and swap them in (your saved garden isn't touched)
+async function updateApp() {
+  try {
+    if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if (typeof caches !== "undefined" && caches.keys) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); }
+  } catch (e) {}
+  location.reload();
+}
+// has a newer version of the app been published? Compare the script this page is running with the one a fresh visit would get.
+// true = yes, false = up to date, null = couldn't tell (offline etc.)
+async function newerDeployAvailable() {
+  try {
+    const mine = [...document.scripts].map((el) => el.getAttribute("src") || "").find((u) => /assets\/index-[\w-]+\.js/.test(u));
+    if (!mine) return false;
+    const r = await fetch(`./index.html?_=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return null;
+    const m = (await r.text()).match(/assets\/index-[\w-]+\.js/);
+    return m ? !mine.includes(m[0]) : null;
+  } catch (e) { return null; }
+}
+
+// the "your app is out of date" screen (hard) and the banners (soft / info)
+function UpdateNotice({ notice, onDismiss, onViewOnly }) {
+  const [busy, setBusy] = useState(false);
+  if (!notice) return null;
+  const update = () => { setBusy(true); updateApp(); };
+  if (notice.level === "hard" && !notice.viewOnly) return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(20,28,22,.78)", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+      <div style={{ ...card, maxWidth: 420, width: "100%", padding: 22, textAlign: "center" }}>
+        <div style={{ fontSize: 34, lineHeight: 1 }}>🔄</div>
+        <h2 style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 21, color: C.fernDk, margin: "10px 0 8px" }}>Please update the app</h2>
+        <p style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55, margin: "0 0 8px" }}>Your garden was last saved by a newer version of this app{notice.build ? ` (build ${notice.build})` : ""}. This copy is build {BUILD_NUM} and is out of date — if it carried on, it could scramble your garden.</p>
+        <p style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55, margin: "0 0 14px" }}><strong>Nothing has been changed or saved.</strong> Tap <strong>Update now</strong> to fetch the latest version; your garden stays exactly as it is.</p>
+        <button onClick={update} style={{ ...btn(C.fern), width: "100%", justifyContent: "center" }}>{busy ? "Updating…" : "Update now"}</button>
+        <button onClick={onViewOnly} style={{ ...linkBtn, marginTop: 14, fontSize: 12 }}>Just let me look (read-only — nothing will be saved)</button>
+      </div>
+    </div>);
+  const tone = notice.level === "hard" ? C.beet : notice.level === "info" ? C.fern : C.harvest;
+  const text = notice.level === "hard" ? "Read-only — this copy of the app is out of date, so nothing you change is being saved."
+    : notice.level === "info" ? notice.msg
+    : notice.why === "deploy" ? "A newer version of the app has been published."
+    : `Your garden was last saved by a newer version of the app (build ${notice.build}); this copy is build ${BUILD_NUM}.`;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 14px", background: hexA(tone, .12), borderBottom: `1px solid ${hexA(tone, .5)}`, fontSize: 12.5, color: C.ink, lineHeight: 1.45 }}>
+      <span style={{ flex: "1 1 220px" }}>{text}{notice.level === "soft" ? " Update to stay in step with your other devices." : ""}</span>
+      {notice.level !== "info" && <button onClick={update} style={{ ...btn(tone), padding: "6px 12px", fontSize: 12.5 }}>{busy ? "Updating…" : "Update now"}</button>}
+      {notice.level !== "hard" && <button onClick={onDismiss} style={iconBtn} title="Dismiss"><X size={15} /></button>}
+    </div>);
+}
+
+// Settings: check for a newer version on demand
+function UpdateChecker() {
+  const [st, setSt] = useState("idle"); // idle | checking | latest | newer | unsure
+  const [busy, setBusy] = useState(false);
+  const check = async () => { setSt("checking"); const r = await newerDeployAvailable(); setSt(r === null ? "unsure" : r ? "newer" : "latest"); };
+  return (
+    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <button onClick={check} disabled={st === "checking"} style={{ ...btnOutline(C.fern), padding: "6px 11px", fontSize: 12.5 }}><RefreshCw size={13} /> {st === "checking" ? "Checking…" : "Check for updates"}</button>
+      {st === "latest" && <span style={{ fontSize: 12, color: C.fern }}>✓ You have the latest version.</span>}
+      {st === "unsure" && <span style={{ fontSize: 12, color: C.muted }}>Couldn't check right now (offline?).</span>}
+      {st === "newer" && <><span style={{ fontSize: 12, color: C.harvest, fontWeight: 600 }}>A newer version is available.</span><button onClick={() => { setBusy(true); updateApp(); }} style={{ ...btn(C.harvest), padding: "6px 11px", fontSize: 12.5 }}>{busy ? "Updating…" : "Update now"}</button></>}
+    </div>);
+}
 
 // --- sync safety: never let a blank/new device clobber a real cloud garden ---
 const isEmptyGarden = (d) => !d || ((d.sections || []).length === 0 && !d.bg);
@@ -927,6 +1059,22 @@ export default function GardenManager() {
   const undoingRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [sync, setSync] = useState({ state: "idle", at: null }); // idle|syncing|synced|error
+  const [notice, setNotice] = useState(null); // out-of-date screen / banners (never downgrades a hard notice)
+  useEffect(() => { // listen for notices raised anywhere (including module-level saves), and replay any raised before we mounted
+    noticeSink = (n) => setNotice((cur) => (cur && cur.level === "hard" && n.level !== "hard") ? cur : n);
+    if (pendingNotice) noticeSink(pendingNotice);
+    return () => { noticeSink = null; };
+  }, []);
+  useEffect(() => { // is a newer version published? check shortly after opening, and whenever the app is brought back (at most every 10 min)
+    let alive = true, last = 0;
+    const run = async () => { if (!alive || Date.now() - last < 600000) return; last = Date.now(); if ((await newerDeployAvailable()) === true) emitNotice({ level: "soft", why: "deploy" }); };
+    const t = setTimeout(run, 4000);
+    const onVis = () => { if (document.visibilityState === "visible") run(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { alive = false; clearTimeout(t); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
+  // every cloud write goes through here: stamped with this build, and refused outright once the app knows it's out of date
+  const guardedPush = (payload) => writeLocked ? Promise.resolve() : cloud.push(stampOf(payload));
 
   // pull remote and decide which side wins — with strong guards so a blank or
   // brand-new device can never overwrite a real garden already in the cloud.
@@ -936,6 +1084,11 @@ export default function GardenManager() {
     setSync((s) => ({ ...s, state: "syncing" }));
     try {
       const remote = await cloud.pull();
+      if (remote && remote.data) { // is the cloud copy newer than this app? then touch nothing
+        const st = versionStatus(remote.data);
+        if (st && st.level === "hard") { emitNotice(st); setSync({ state: "error", at: Date.now() }); return; }
+        if (st) emitNotice({ level: "soft", why: "data", build: st.build });
+      }
       const localStamp = stampRef.current || (data.updatedAt || 0);
       const firstTime = !hasSyncedBefore(uid);
       const adopt = (r) => { suppressRef.current = true; stampRef.current = r.updatedAt || 0;
@@ -943,19 +1096,27 @@ export default function GardenManager() {
 
       if (!remote || isEmptyGarden(remote.data)) {
         // cloud is empty → seed it from local only if we actually have something
-        if (!isEmptyGarden(data)) await cloud.push({ ...data, updatedAt: localStamp || Date.now() });
+        if (!isEmptyGarden(data)) await guardedPush({ ...data, updatedAt: localStamp || Date.now() });
       } else {
         // cloud has a real garden
         const remoteNewer = (remote.updatedAt || 0) > localStamp;
-        if (firstTime || remoteNewer || isEmptyGarden(data)) adopt(remote);
-        else if (localStamp > (remote.updatedAt || 0)) await cloud.push({ ...data, updatedAt: localStamp });
+        // our own copy has coops cut off from their zone (an out-of-date app did that) but the cloud copy is whole: the cloud wins
+        const preferRemote = localHadOrphans && !hasOrphanedCoops(remote.data);
+        if (firstTime || remoteNewer || isEmptyGarden(data) || preferRemote) {
+          adopt(remote);
+          if (preferRemote) emitNotice({ level: "info", msg: "Your chicken zone had been broken up by an out-of-date copy of the app — it's been put back from your cloud copy." });
+        } else if (localStamp > (remote.updatedAt || 0)) await guardedPush({ ...data, updatedAt: localStamp });
+        localHadOrphans = false;
       }
       markSynced(uid);
       setSync({ state: "synced", at: Date.now() });
     } catch (e) { setSync({ state: "error", at: Date.now() }); }
   }, [cloud, data]);
 
-  useEffect(() => { loadData().then((d) => { setData(d); stampRef.current = d.updatedAt || 0; setLoaded(true); }); }, []);
+  useEffect(() => { loadData().then((d) => {
+    setData(d); stampRef.current = d.updatedAt || 0; setLoaded(true);
+    if (lastRepairs.zones > 0) { emitNotice({ level: "info", msg: "A chicken zone had gone missing (an out-of-date copy of the app can do that). It's been rebuilt so your coops are grouped again — drag it over the coop area and set its size." }); lastRepairs.zones = 0; }
+  }); }, []);
 
   // persist locally on every change, and push to cloud (debounced) when signed in
   useEffect(() => {
@@ -971,7 +1132,7 @@ export default function GardenManager() {
       setSync((s) => ({ ...s, state: "syncing" }));
       clearTimeout(pushTimer.current);
       pushTimer.current = setTimeout(() => {
-        cloud.push(payload).then(() => setSync({ state: "synced", at: Date.now() })).catch(() => setSync({ state: "error", at: Date.now() }));
+        guardedPush(payload).then(() => setSync({ state: "synced", at: Date.now() })).catch(() => setSync({ state: "error", at: Date.now() }));
       }, 900);
     }
   }, [data, loaded]);
@@ -1023,7 +1184,7 @@ export default function GardenManager() {
   }, []);
   useEffect(() => {
     const st = document.createElement("style");
-    st.textContent = "@media print { .report-toggles { display: none !important; } }";
+    st.textContent = "@media print { .report-toggles { display: none !important; } } @keyframes gmPulse { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(2); opacity: 0; } }";
     document.head.appendChild(st); return () => document.head.removeChild(st);
   }, []);
   useEffect(() => {
@@ -1060,6 +1221,7 @@ export default function GardenManager() {
   return (
     <LibCtx.Provider value={lib}>
     <div style={{ fontFamily: body, background: C.bg, color: C.ink, minHeight: 620, borderRadius: 14, overflow: "hidden", border: `1px solid ${C.line}` }}>
+      <UpdateNotice notice={notice} onDismiss={() => setNotice(null)} onViewOnly={() => setNotice((n) => ({ ...n, viewOnly: true }))} />
       <header style={{ background: C.fernDk, color: "#F1EEE2", padding: `calc(${isPhone ? 10 : 16}px + env(safe-area-inset-top, 0px)) ${isPhone ? 14 : 20}px ${isPhone ? 10 : 16}px` }}>
         <div style={{ display: "flex", alignItems: "center", gap: isPhone ? 8 : 10 }}>
           <Leaf size={isPhone ? 19 : 22} color={C.sageSoft} />
@@ -1238,8 +1400,8 @@ function DateSlider({ data, viewDate, setViewDate, markers = [] }) {
 }
 
 const visibleAt = (item, viewDate) => {
-  if (item.planted && new Date(item.planted) > viewDate) return false;
-  if (item.removed && new Date(item.removed) < viewDate) return false;
+  if (item.planted && dayStr(item.planted) > dayStr(viewDate)) return false;
+  if (item.removed && dayStr(item.removed) < dayStr(viewDate)) return false;
   return true;
 };
 
@@ -1256,7 +1418,7 @@ function cropStage(cell, meta, viewDate) {
   if (!cell.planted) return "growing";
   const planted = new Date(cell.planted);
   if (planted > viewDate) return "planned";
-  if (cell.removed && new Date(cell.removed) <= viewDate) return "done";
+  if (cell.removed && dayStr(cell.removed) <= dayStr(viewDate)) return "done";
   if (meta?.hmode === "months") {
     const vrt = (meta.varieties || []).find((v) => v.name === cell.variety);
     const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
@@ -1301,10 +1463,10 @@ function cellsToPlantings(bed, grid) {
 function squareOwners(plantings, grid, viewDate) {
   const owner = {}; const plantedAt = {};
   plantings.forEach((p) => {
-    const visible = (!p.planted || new Date(p.planted) <= viewDate);
+    const visible = (!p.planted || dayStr(p.planted) <= dayStr(viewDate));
     p.cells.forEach((sqc) => {
-      if (p.planted && new Date(p.planted) > viewDate) return;
-      if (sqc.removed && new Date(sqc.removed) < viewDate) return;
+      if (p.planted && dayStr(p.planted) > dayStr(viewDate)) return;
+      if (sqc.removed && dayStr(sqc.removed) < dayStr(viewDate)) return;
       const k = sqc.y * grid.gw + sqc.x; const pk = p.planted ? new Date(p.planted).getTime() : 0;
       if (owner[k] === undefined || pk >= plantedAt[k]) { owner[k] = p; plantedAt[k] = pk; }
     });
@@ -1390,7 +1552,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   const addTree = (item) => {
     const isBush = item.icon === "bush" || item.icon === "cane";
     const dia = data.dimM?.w ? clamp((isBush ? 1.5 : 4) / data.dimM.w * 100, 0.2, 80) : (isBush ? 2.5 : 4);
-    const t = { id: uid(), x: 50, y: 50, plant: item.name, icon: item.icon || "tree", dia, planted: todayISO(), ferts: [], notes: "" };
+    const spot = nextTreeSpot(loose?.plants, dia); const t = { id: uid(), x: spot.x, y: spot.y, plant: item.name, icon: item.icon || "tree", dia, planted: todayISO(), ferts: [], notes: "" };
     setData((d) => {
       if (d.sections.some((s) => s.loose)) return { ...d, sections: d.sections.map((s) => s.loose ? { ...s, plants: [...(s.plants || []), t] } : s) };
       const area = { id: uid(), name: "Trees around the property", kind: "orchard", loose: true, x: 0, y: 0, w: 100, h: 100, bg: null, beds: [], plants: [t], mobs: [] };
@@ -1754,6 +1916,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const wrapRef = useRef(null);
   const [picker, setPicker] = useState(false);
   const [hover, setHover] = useState(null);
+  const markerEls = useRef({}); // plant id -> its element on the map, so the list below can scroll to it
   const [pickQ, setPickQ] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [logH, setLogH] = useState(false);
@@ -1792,9 +1955,16 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const addBed = () => { const b = { id: uid(), name: `Bed ${(section.beds || []).length + 1}`, kind: "veg", x: 35, y: 38, w: 28, h: 24, cols: 4, rows: 3, cells: [], notes: "" };
     patchSection({ beds: [...(section.beds || []), b] }); };
 
-  const addPlant = (item) => { const isBush = item.icon === "bush" || item.icon === "cane"; const p = { id: uid(), x: 45, y: 45, plant: item.name, icon: item.icon || "tree", dia: isBush ? 8 : 12, planted: todayISO(), ferts: [], notes: "" };
+  const addPlant = (item) => { const isBush = item.icon === "bush" || item.icon === "cane"; const dia0 = isBush ? 8 : 12; const spot = nextTreeSpot(section.plants, dia0); const p = { id: uid(), x: spot.x, y: spot.y, plant: item.name, icon: item.icon || "tree", dia: dia0, planted: todayISO(), ferts: [], notes: "" };
     patchSection({ plants: [...(section.plants || []), p] }); setPicker(false); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
   const removePlant = (id) => { patchSection({ plants: (section.plants || []).filter((p) => p.id !== id) }); setSel(null); };
+  // pick a plant from the list: select it (so it's highlighted on the map and its details open) and scroll the map to it
+  const focusPlant = (p) => {
+    if (editMode) { if (editSel !== p.id) setMoveId(null); setEditSel(p.id); } else setSel({ kind: "marker", sectionId: section.id, id: p.id });
+    setTimeout(() => { const el = markerEls.current[p.id]; if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); }, 80);
+  };
+  // bring a plant to the middle of the map (a hedge is placed by its corner, so offset by half its size)
+  const toCentre = (p) => { patchItem(p.id, p.shape === "hedge" ? { x: 50 - (p.w ?? 30) / 2, y: 50 - (p.h ?? 8) / 2 } : { x: 50, y: 50 }); focusPlant(p); };
 
   const pickList = plantsForSection(lib, section.kind);
   const selPlant = sel?.kind === "marker" && sel.sectionId === section.id ? (section.plants || []).find((p) => p.id === sel.id) : null;
@@ -1926,6 +2096,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{p.plant}{dup.length > 1 ? ` #${idx + 1}` : ""}</span>
+                <button onClick={() => toCentre(p)} style={btnOutline(C.fern)}><Crosshair size={14} /> To centre</button>
                 <MoveToggle on={moveId === p.id} onToggle={() => setMoveId(moveId === p.id ? null : p.id)} />
                 <ConfirmButton onConfirm={() => { removePlant(p.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
               </div>
@@ -2002,7 +2173,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const occSq = Object.keys(squareOwners(bedPlantings(b), fg, viewDate)).length;
               const pct = Math.round((occSq / totalSq) * 100);
               const fillLabel = pct <= 0 ? "empty" : pct >= 100 ? "full" : `${pct}% full`;
-              const anyPlanned = bedPlantings(b).map(plantingAsCell).some((c) => new Date(c.planted) > new Date() && visibleAt(c, viewDate));
+              const anyPlanned = bedPlantings(b).map(plantingAsCell).some((c) => dayStr(c.planted) > dayStr(new Date()) && visibleAt(c, viewDate));
               const dim = dimLabel(realOf(b.w, b.h, sectionReal));
               return (
                 <div key={b.id}
@@ -2034,21 +2205,48 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               if (p.shape === "hedge") {
                 const w = p.w ?? 30, h = p.h ?? 8;
                 return (
-                  <div key={p.id} onPointerDown={down} onClick={select}
-                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: armed ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
+                  <div key={p.id} ref={(el) => { markerEls.current[p.id] = el; }} onPointerDown={down} onClick={select}
+                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: armed ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : on ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : "0 1px 3px rgba(0,0,0,.3)" }}>
                     <span style={{ fontSize: 10.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 8px" }}>{p.plant} hedge</span>
                   </div>);
               }
               const isBush = p.icon === "bush" || p.icon === "cane";
               const dia = p.dia ?? (isBush ? 8 : 12);
               return (
-                <div key={p.id} onPointerDown={down} onClick={select}
+                <div key={p.id} ref={(el) => { markerEls.current[p.id] = el; }} onPointerDown={down} onClick={select}
                   style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, minWidth: 14, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto" }}>
+                  {on && <span className="gm-found" style={{ position: "absolute", left: 0, top: 0, width: "100%", aspectRatio: 1, boxSizing: "border-box", borderRadius: "50%", border: `3px solid ${C.harvest}`, animation: "gmPulse 1.3s ease-out 3", pointerEvents: "none" }} />}
                   <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${armed ? C.harvest : on ? "#fff" : ring}`, boxShadow: armed ? `0 0 0 3px ${hexA(C.harvest, .55)}` : on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
           </MapShell>
           <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Tap a bed to select it — then tap Move to drag it, or set its size & grid above. Nothing moves unless you press Move. Tap “Done” to finish." : "Tap one to select it — then tap Move to drag it, or set its shape & size above. Nothing moves unless you press Move. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
+
+          {!usesBeds && (section.plants || []).length > 0 && (() => {
+            const plants = section.plants || [];
+            const numberOf = (p) => { const same = plants.filter((x) => x.plant === p.plant); return same.length > 1 ? ` #${same.indexOf(p) + 1}` : ""; };
+            const sorted = plants.slice().sort((a, b) => String(a.plant).localeCompare(String(b.plant), undefined, { numeric: true, sensitivity: "base" }));
+            return (
+              <div style={{ ...card, padding: 12, marginTop: 10 }}>
+                <strong style={{ fontSize: 13.5, color: C.fernDk }}>{section.kind === "berry" ? "Plants" : "Trees"} in this area · {plants.length}</strong>
+                <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 6px", lineHeight: 1.5 }}>Tap one to find it on the map. <strong>To centre</strong> brings it to the middle if it's hidden under another or out of sight.</p>
+                <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                  {sorted.map((p) => {
+                    const on = editMode ? editSel === p.id : selPlant?.id === p.id;
+                    const shown = visibleAt(p, viewDate); const future = dayStr(p.planted) > todayISO();
+                    const colour = lib.color(p.plant, null) || "#557249";
+                    return (
+                      <div key={p.id} onClick={() => focusPlant(p)}
+                        style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 6px", borderTop: `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(C.harvest, .14) : "transparent" }}>
+                        <span style={{ width: 11, height: 11, borderRadius: "50%", background: colour, flexShrink: 0, boxShadow: "0 0 0 1px rgba(0,0,0,.25)" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 110px", minWidth: 0 }}>{p.plant}{numberOf(p)}{p.shape === "hedge" ? " (hedge)" : ""}</span>
+                        <span style={{ fontSize: 11.5, color: shown ? C.muted : C.harvest }}>{!shown ? (future ? `not planted until ${fmtDate(p.planted)}` : "not on the map for this date") : p.planted ? `planted ${fmtDate(p.planted)}` : ""}</span>
+                        <button onClick={(e) => { e.stopPropagation(); toCentre(p); }} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }}><Crosshair size={12} /> To centre</button>
+                      </div>);
+                  })}
+                </div>
+              </div>);
+          })()}
         </div>
 
         {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} moveTargets={moveTargets} onMove={(toId) => sendPlants([selPlant.id], toId, selPlant.id)} />}
@@ -2735,7 +2933,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
       return c; }) }));
     const np = { id: uid(), plant: crop.name, fam: crop.fam, variety: null, planted: V, sown: null, ferts: [], notes: "", planned: V > todayISO(), covers, cells: cells.map((c) => ({ x: c.x, y: c.y, removed: null })) };
     commit([...next, np]); clearSel(); setPicker(null); setSelMode(false); setSel({ kind: "cell", sectionId: section.id, bedId: bed.id, id: np.id }); };
-  const clearThese = () => { const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed && (!p.planted || new Date(p.planted) <= viewDate)) ? { ...c, removed: V } : c) }));
+  const clearThese = () => { const next = plantings.map((p) => ({ ...p, cells: p.cells.map((c) => (selSet.has(keyOf(c.x, c.y)) && !c.removed && (!p.planted || dayStr(p.planted) <= dayStr(viewDate))) ? { ...c, removed: V } : c) }));
     commit(next); clearSel(); };
   const planNextThese = (crop) => { const cells = selCells(); if (!cells.length) return;
     const firstK = selSet.values().next().value; const firstOwner = owners[firstK]; const meta = firstOwner && lib.vegByName(firstOwner.plant);
@@ -2819,11 +3017,11 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
 
   const suggestGroup = nextGroupAfter(bedFamily(bed, viewDate));
   const selPlanting = sel?.kind === "cell" && sel.bedId === bed.id ? plantings.find((p) => p.id === sel.id) : null;
-  const markers = plantings.flatMap((p) => { const a = []; if (p.planted) a.push({ day: dayKey(new Date(p.planted)), color: new Date(p.planted) > now ? C.harvest : C.fern });
+  const markers = plantings.flatMap((p) => { const a = []; if (p.planted) a.push({ day: dayKey(new Date(p.planted)), color: dayStr(p.planted) > dayStr(now) ? C.harvest : C.fern });
     const rem = plantingRemoved(p); if (rem) a.push({ day: dayKey(new Date(rem)), color: C.muted }); return a; });
-  const liveList = plantings.filter((p) => { const k = `${p.plant}`; return (!p.planted || new Date(p.planted) <= viewDate) && (p.cells || []).some((c) => !c.removed || new Date(c.removed) >= viewDate); });
+  const liveList = plantings.filter((p) => { const k = `${p.plant}`; return (!p.planted || dayStr(p.planted) <= dayStr(viewDate)) && (p.cells || []).some((c) => !c.removed || dayStr(c.removed) >= dayStr(viewDate)); });
   const liveHere = [...new Set(liveList.map((p) => p.plant))];
-  const liveSquares = (p) => (p.cells || []).filter((c) => (!p.planted || new Date(p.planted) <= viewDate) && (!c.removed || new Date(c.removed) >= viewDate)).length;
+  const liveSquares = (p) => (p.cells || []).filter((c) => (!p.planted || dayStr(p.planted) <= dayStr(viewDate)) && (!c.removed || dayStr(c.removed) >= dayStr(viewDate))).length;
 
   return (
     <div>
@@ -2933,7 +3131,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
               const x = i % grid.gw, y = Math.floor(i / grid.gw); const k = keyOf(x, y); const p = owners[k]; const isSel = selSet.has(k);
               const stage = p && byStage ? cropStage(p, lib.vegByName(p.plant), viewDate) : null;
               const col = p ? (stage ? STAGE[stage].color : lib.color(p.plant, p.fam)) : null;
-              const planned = p && new Date(p.planted) > now;
+              const planned = p && dayStr(p.planted) > dayStr(now);
               const isSelPlant = !selMode && selPlanting && p && p.id === selPlanting.id;
               const dim = !selMode && selPlanting && !isSelPlant;
               return (
@@ -2963,7 +3161,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
           {/* what's growing here now */}
           {liveList.length > 0 && <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Growing here — tap one to highlight its squares:</div>
-            {liveList.map((p) => { const n = liveSquares(p); const m2 = (n * grid.sq * grid.sq).toFixed(2); const planned = new Date(p.planted) > now; const on = selPlanting?.id === p.id;
+            {liveList.map((p) => { const n = liveSquares(p); const m2 = (n * grid.sq * grid.sq).toFixed(2); const planned = dayStr(p.planted) > dayStr(now); const on = selPlanting?.id === p.id;
               return (<button key={p.id} onClick={() => setSel(on ? null : { kind: "cell", sectionId: section.id, bedId: bed.id, id: p.id })}
                 style={{ background: on ? hexA(C.fern, .14) : "transparent", border: on ? `1px solid ${hexA(C.fern, .5)}` : "1px solid transparent", borderRadius: 7, textAlign: "left", cursor: "pointer", fontSize: 12, color: C.ink, display: "flex", alignItems: "center", gap: 7, padding: "4px 6px" }}>
                 <span style={{ width: 11, height: 11, borderRadius: 3, background: lib.color(p.plant, p.fam), flexShrink: 0 }} />
@@ -2995,7 +3193,7 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
   const [newFert, setNewFert] = useState("");
   const [qty, setQty] = useState("");
   const [unit, setUnit] = useState("kg");
-  const isPlanned = item.planted && new Date(item.planted) > new Date();
+  const isPlanned = item.planted && dayStr(item.planted) > dayStr(new Date());
 
   const varieties = meta?.varieties || [];
   const selVar = varieties.find((v) => v.name === item.variety);
@@ -3257,7 +3455,7 @@ const plantingAsCell = (p) => ({ id: p.id, plant: p.plant, fam: p.fam, variety: 
 
 // how much of a bed's currently-live squares belong to each plant family (weighted by squares, not by planting count)
 function bedFamilyWeights(bed, viewDate) {
-  const cellsLiveN = (p) => (p.cells || []).filter((c) => !c.removed || (viewDate && new Date(c.removed) >= viewDate)).length || 1;
+  const cellsLiveN = (p) => (p.cells || []).filter((c) => !c.removed || (viewDate && dayStr(c.removed) >= dayStr(viewDate))).length || 1;
   const live = bedPlantings(bed).filter((p) => !viewDate || visibleAt(plantingAsCell(p), viewDate));
   const counts = {}; let total = 0;
   live.forEach((p) => { if (!p.fam) return; const w = cellsLiveN(p); counts[p.fam] = (counts[p.fam] || 0) + w; total += w; });
@@ -3322,9 +3520,9 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
   data.sections.forEach((s) => {
     (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => {
       const go = { kind: "cell", sectionId: s.id, bedId: b.id, cellId: c.id };
-      if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)), go });
+      if (c.planted && dayStr(c.planted) > dayStr(today)) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)), go });
       const meta = lib.vegByName(c.plant);
-      const active = c.planted && new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
+      const active = c.planted && dayStr(c.planted) <= dayStr(today) && (!c.removed || dayStr(c.removed) >= dayStr(today));
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
       if (meta?.hmode === "months") {
         const hmon = (vrt?.hmon?.length ? vrt.hmon : meta.hmon) || [];
@@ -3388,7 +3586,7 @@ function DoNowView({ data, setData, month, hemi = "south", display, setTab, setN
   data.sections.forEach((s) => { if (SECTION_KINDS[s.kind].uses !== "beds") return;
     (s.beds || []).forEach((b) => {
       const ps = bedPlantings(b);
-      const occ = ps.filter((p) => !plantingRemoved(p) && (!p.planted || new Date(p.planted) <= today)).reduce((n, p) => n + ((p.cells || []).length || 1), 0);
+      const occ = ps.filter((p) => !plantingRemoved(p) && (!p.planted || dayStr(p.planted) <= dayStr(today))).reduce((n, p) => n + ((p.cells || []).length || 1), 0);
       const totalSq = b.grid ? b.grid.w * b.grid.h : (b.cols || 4) * (b.rows || 3);
       const free = totalSq - occ;
       if (free <= 0) return;
@@ -4130,6 +4328,8 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
     const r = new FileReader();
     r.onload = () => { try { const parsed = JSON.parse(r.result);
         if (!parsed || typeof parsed !== "object" || !("sections" in parsed)) throw new Error("shape");
+        const vs = versionStatus(parsed);
+        if (vs && vs.level === "hard") { alert("This backup was made by a newer version of the app, so this older copy can't read it safely. Update the app first (Settings → Check for updates), then restore it."); return; }
         if (!confirm("Restore this backup? It replaces everything currently saved in this browser.")) return;
         setData(normalize(parsed)); close();
       } catch { alert("That doesn't look like a backup file."); } };
@@ -4215,6 +4415,7 @@ function PlaceSettings({ data, setData, close, cloud, sync, reconcile }) {
         <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${C.line}`, fontSize: 11.5, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
           <Info size={13} color={C.sage} /> App version: <strong style={{ color: C.fernDk }}>{APP_BUILD}</strong>
         </div>
+        <UpdateChecker />
       </div>
     </div>
   );
@@ -4904,9 +5105,9 @@ function ReportView({ data, setData, month, hemi, display }) {
   const pushLog = (f, plant, where) => { const e = { ...f, plant, where, dk: dayKey(new Date(f.date)) }; log.push(e); if (f.type === "harvest") harvestLog.push(e); };
   sections.forEach((s) => {
     (s.beds || []).forEach((b) => bedPlantings(b).map(plantingAsCell).forEach((c) => {
-      if (c.planted && new Date(c.planted) > today) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)) });
+      if (c.planted && dayStr(c.planted) > dayStr(today)) planned.push({ plant: c.plant, where: `${b.name} · ${s.name}`, date: c.planted, dk: dayKey(new Date(c.planted)) });
       const meta = lib.vegByName(c.plant);
-      const active = new Date(c.planted) <= today && (!c.removed || new Date(c.removed) >= today);
+      const active = !!c.planted && dayStr(c.planted) <= dayStr(today) && (!c.removed || dayStr(c.removed) >= dayStr(today));
       const vrt = (meta?.varieties || []).find((v) => v.name === c.variety);
       if (meta?.hmode === "months") { const sh = soonestHarvest(vrt?.hmon?.length ? vrt.hmon : meta.hmon);
         if (active && !c.noHarvest && sh && sh.dk <= tk + 400) harvests.push({ plant: c.plant + (c.variety ? ` (${c.variety})` : ""), where: `${b.name} · ${s.name}`, dk: sh.dk, label: sh.ready ? "in season now" : `from ${MONTHS[sh.m - 1]}` }); }
