@@ -333,6 +333,17 @@ const STOCK_BREEDS = {
   chicken: ["Brown Shaver", "Hyline Brown", "Plymouth Rock", "Orpington", "Wyandotte", "Leghorn", "Rhode Island Red", "Silkie", "Australorp", "Araucana", "Frizzle", "Barnevelder", "Light Sussex", "Pekin"],
 };
 
+// animals living in a stock area, summed by species — for the little icons on the property map
+function stockBadges(s) {
+  const by = {}; (s.mobs || []).forEach((m) => { const n = mobHead(m); if (n) by[m.species] = (by[m.species] || 0) + n; });
+  return Object.entries(by).map(([sp, n]) => ({ sp, n, emoji: SPECIES[sp]?.emoji || "🐾" }));
+}
+// total real-world area (m²) of the beds in a garden/greenhouse, when the area's size is known
+function bedAreaM2(s, secReal) {
+  if (!secReal) return null;
+  const t = (s.beds || []).reduce((n, b) => { const r = realOf(b.w, b.h, secReal); return n + (r ? r.w * r.l : 0); }, 0);
+  return t > 0 ? Math.round(t) : null;
+}
 function sectionCountLabel(s) {
   const k = SECTION_KINDS[s.kind];
   let n, word;
@@ -345,7 +356,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 142";
+const APP_BUILD = "2026-06-25 · build 143";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -466,7 +477,8 @@ const markSynced = (uid) => { try { localStorage.setItem(_syncKey(uid), "1"); } 
 const realOf = (boxW, boxH, parent) => (parent && parent.w && parent.l)
   ? { w: Math.round((boxW / 100) * parent.w * 10) / 10, l: Math.round((boxH / 100) * parent.l * 10) / 10 }
   : null;
-const boxFromReal = (real, parent) => ({ w: clamp((real.w || 0) / parent.w * 100, 2, 100), h: clamp((real.l || 0) / parent.l * 100, 2, 100) });
+// floor is 0.2% of the parent (not 2%) — on a big property 2% is ~2.5 m, which silently stopped small gardens/beds being sized down
+const boxFromReal = (real, parent) => ({ w: clamp((real.w || 0) / parent.w * 100, 0.2, 100), h: clamp((real.l || 0) / parent.l * 100, 0.2, 100) });
 const dimLabel = (r) => r ? `${r.w}×${r.l}m` : null;
 
 function resizeImage(file, maxDim = 1280) {
@@ -1235,6 +1247,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   const [editSel, setEditSel] = useState(null);
   const [treeSel, setTreeSel] = useState(null);
   const [moveId, setMoveId] = useState(null); // the one selected area/tree that is currently unlocked for dragging
+  const [showAreas, setShowAreas] = useState(true);
   const [treePick, setTreePick] = useState(false);
   const [treeQ, setTreeQ] = useState("");
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
@@ -1249,7 +1262,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   const dragTrees = useDrag(wrapRef, patchTree);
   const addTree = (item) => {
     const isBush = item.icon === "bush" || item.icon === "cane";
-    const dia = data.dimM?.w ? clamp((isBush ? 1.5 : 4) / data.dimM.w * 100, 2, 80) : (isBush ? 2.5 : 4);
+    const dia = data.dimM?.w ? clamp((isBush ? 1.5 : 4) / data.dimM.w * 100, 0.2, 80) : (isBush ? 2.5 : 4);
     const t = { id: uid(), x: 50, y: 50, plant: item.name, icon: item.icon || "tree", dia, planted: todayISO(), ferts: [], notes: "" };
     setData((d) => {
       if (d.sections.some((s) => s.loose)) return { ...d, sections: d.sections.map((s) => s.loose ? { ...s, plants: [...(s.plants || []), t] } : s) };
@@ -1309,7 +1322,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               // keep every area at its set real size: re-derive each %-box under the new property size
               const sections = (d.sections || []).map((s) => {
                 // the hidden "trees around the property" area always covers the whole property; just hold each tree at its real size
-                if (s.loose) return { ...s, x: 0, y: 0, w: 100, h: 100, plants: (s.plants || []).map((p) => p.shape === "hedge" ? p : { ...p, dia: clamp((p.dia ?? 12) * old.w / dimM.w, 2, 80) }) };
+                if (s.loose) return { ...s, x: 0, y: 0, w: 100, h: 100, plants: (s.plants || []).map((p) => p.shape === "hedge" ? p : { ...p, dia: clamp((p.dia ?? 12) * old.w / dimM.w, 0.2, 80) }) };
                 const real = realOf(s.w, s.h, old); if (!real) return s; const bx = boxFromReal(real, dimM); return { ...s, x: s.x, y: s.y, ...bx }; });
               return { ...d, dimM, sections };
             })} />
@@ -1324,7 +1337,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
       </div>
 
 
-      {editMode && selTree && (() => { const t = selTree; const m = data.dimM?.w ? Math.round((t.dia ?? 12) / 100 * data.dimM.w * 10) / 10 : null;
+      {editMode && selTree && (() => { const t = selTree; const m = data.dimM?.w ? Math.round((t.dia ?? 12) / 100 * data.dimM.w * 100) / 100 : null;
         return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
@@ -1336,9 +1349,12 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           </div>
           {moveId === t.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: C.muted }}>
-            <span>Canopy {m != null ? `${m} m` : `${Math.round(t.dia ?? 12)}%`}</span>
+            <span>Canopy {m == null ? `${Math.round(t.dia ?? 12)}%` : ""}</span>
             {m != null
-              ? <input type="range" min={1} max={15} step={0.5} value={Math.min(15, Math.max(1, m))} onChange={(e) => patchTree(t.id, { dia: clamp(Number(e.target.value) / data.dimM.w * 100, 2, 80) })} style={{ flex: "1 1 120px", accentColor: C.fern }} />
+              ? <>
+                  <NumApplyField title="canopy ⌀ (m)" unit="m ⌀" value={m} onApply={(v) => patchTree(t.id, { dia: clamp(v / data.dimM.w * 100, 0.2, 80) })} />
+                  <input type="range" min={0.5} max={15} step={0.5} value={Math.min(15, Math.max(0.5, m))} onChange={(e) => patchTree(t.id, { dia: clamp(Number(e.target.value) / data.dimM.w * 100, 0.2, 80) })} style={{ flex: "1 1 100px", accentColor: C.fern }} />
+                </>
               : <input type="range" min={2} max={40} value={t.dia ?? 12} onChange={(e) => patchTree(t.id, { dia: Number(e.target.value) })} style={{ flex: "1 1 120px", accentColor: C.fern }} />}
           </div>
         </div>); })()}
@@ -1365,7 +1381,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
                     if (s.beds?.length) patch.beds = s.beds.map((bed) => { const r = realOf(bed.w, bed.h, oldSectionReal); return r ? { ...bed, ...boxFromReal(r, real) } : bed; });
                     if (s.plants?.length) patch.plants = s.plants.map((p) => {
                       if (p.shape === "hedge") { const r = realOf(p.w, p.h, oldSectionReal); return r ? { ...p, ...boxFromReal(r, real) } : p; }
-                      const diaM = (p.dia ?? 12) / 100 * oldSectionReal.w; return { ...p, dia: clamp(diaM / real.w * 100, 2, 80) };
+                      const diaM = (p.dia ?? 12) / 100 * oldSectionReal.w; return { ...p, dia: clamp(diaM / real.w * 100, 0.2, 80) };
                     });
                   }
                   patchSection(s.id, patch);
@@ -1395,6 +1411,10 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
+              {k.uses === "stock" && s.w >= 8 && s.h >= 8 && (() => { const bd = stockBadges(s); return bd.length ? (
+                <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", alignContent: "center", justifyContent: "center" }}>
+                  {bd.map((b) => <span key={b.sp} style={{ display: "inline-flex", alignItems: "center", gap: 2, textShadow: "0 1px 3px rgba(0,0,0,.7)" }}><span style={{ fontSize: 17, lineHeight: 1 }}>{b.emoji}</span><span style={{ fontSize: 11.5, fontWeight: 700 }}>{b.n}</span></span>)}
+                </div>) : null; })()}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
                 <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
               </div>
@@ -1411,6 +1431,32 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
             </div>); })}
       </MapShell>
       <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Tap an area or tree to select it — then tap Move to drag it, or set its size above. Nothing moves unless you press Move. Tap “Done editing” when finished." : "Tap a section to go inside it, or tap a tree for its details. Tap “Edit layout” to move or add areas and trees."}</p>
+
+      {data.sections.length > 0 && (
+        <div style={{ ...card, padding: 12, marginTop: 10 }}>
+          <button onClick={() => setShowAreas(!showAreas)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", background: "transparent", padding: 0, cursor: "pointer", fontFamily: "inherit" }}>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>Areas at a glance</strong>
+            <span style={{ fontSize: 12, color: C.muted }}>{showAreas ? "hide ▾" : "show ▸"}</span>
+          </button>
+          {showAreas && (
+            <div style={{ marginTop: 6 }}>
+              {data.sections.map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
+                const secReal = s.loose ? data.dimM : realOf(s.w, s.h, data.dimM);
+                const dim = s.loose ? null : dimLabel(secReal);
+                const bd = k.uses === "stock" ? stockBadges(s) : [];
+                const bm = k.uses === "beds" ? bedAreaM2(s, secReal) : null;
+                const detail = k.uses === "stock" ? (bd.length ? bd.map((b) => `${b.emoji} ${b.n}`).join("   ") : "empty") : `${sectionCountLabel(s).text}${bm ? ` · ${bm} m² of beds` : ""}`;
+                const on = editMode && editSel === s.id;
+                return (
+                  <div key={s.id} onClick={() => { if (editMode) { if (!s.loose) { if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } } else setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 6px", borderTop: `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(k.color, .12) : "transparent" }}>
+                    <Icon size={15} color={k.color} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 120px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                    {dim && <span style={{ fontSize: 12, color: C.muted }}>{dim}</span>}
+                    <span style={{ fontSize: 12, color: C.fern, fontWeight: 600 }}>{detail}</span>
+                  </div>); })}
+            </div>)}
+        </div>)}
     </div>
   );
 }
@@ -1600,17 +1646,11 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   <option value="tree">Tree</option><option value="bush">Bush</option><option value="cane">Cane</option><option value="hedge">Hedge (row)</option>
                 </select>
                 {isHedge ? (sectionReal?.w ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <input type="number" min="0" step="0.5" value={Math.round((p.w ?? 30) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { w: clamp(m / sectionReal.w * 100, 2, 100) }); }} title="length (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                    <span style={{ color: C.muted, fontSize: 12 }}>×</span>
-                    <input type="number" min="0" step="0.5" value={Math.round((p.h ?? 8) / 100 * sectionReal.l * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { h: clamp(m / sectionReal.l * 100, 2, 100) }); }} title="width (m)" style={{ width: 58, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                    <span style={{ fontSize: 11, color: C.muted }}>m</span>
-                  </span>
+                  <SizeFields label="" aName="length" bName="width" dim={{ w: Math.round((p.w ?? 30) / 100 * sectionReal.w * 100) / 100, l: Math.round((p.h ?? 8) / 100 * sectionReal.l * 100) / 100 }}
+                    onChange={(real) => patchItem(p.id, { w: clamp(real.w / sectionReal.w * 100, 0.2, 100), h: clamp(real.l / sectionReal.l * 100, 0.2, 100) })} />
                 ) : <PctSizeFields w={p.w ?? 30} h={p.h ?? 8} onChange={({ w, h }) => patchItem(p.id, { w: clamp(w, 2, 100), h: clamp(h, 2, 100) })} />) : (sectionReal?.w ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <input type="number" min="0" step="0.5" value={Math.round((p.dia ?? 12) / 100 * sectionReal.w * 10) / 10} onChange={(e) => { const m = Number(e.target.value); if (!isNaN(m) && m > 0) patchItem(p.id, { dia: clamp(m / sectionReal.w * 100, 2, 80) }); }} title="canopy ⌀ (m)" style={{ width: 64, border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }} />
-                    <span style={{ fontSize: 11, color: C.muted }}>m ⌀</span>
-                  </span>
+                  <NumApplyField title="canopy ⌀ (m)" unit="m ⌀" value={Math.round((p.dia ?? 12) / 100 * sectionReal.w * 100) / 100}
+                    onApply={(m) => patchItem(p.id, { dia: clamp(m / sectionReal.w * 100, 0.2, 80) })} />
                 ) : (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                     <input type="range" min={3} max={40} value={p.dia ?? 12} onChange={(e) => patchItem(p.id, { dia: Number(e.target.value) })} style={{ width: 80, accentColor: C.fern }} />
@@ -1709,7 +1749,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const dia = p.dia ?? (isBush ? 8 : 12);
               return (
                 <div key={p.id} onPointerDown={down} onClick={select}
-                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto" }}>
+                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, minWidth: 14, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto" }}>
                   <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${armed ? C.harvest : on ? "#fff" : ring}`, boxShadow: armed ? `0 0 0 3px ${hexA(C.harvest, .55)}` : on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
@@ -1751,7 +1791,7 @@ function RotateField({ rot, onChange }) {
   );
 }
 
-function SizeFields({ label, dim, onChange }) {
+function SizeFields({ label, dim, onChange, aName = "width", bName = "length" }) {
   const [draft, setDraft] = useState({ w: dim?.w ?? "", l: dim?.l ?? "" });
   useEffect(() => { setDraft({ w: dim?.w ?? "", l: dim?.l ?? "" }); }, [dim?.w, dim?.l]);
   const validDraft = Number(draft.w) > 0 && Number(draft.l) > 0;
@@ -1763,12 +1803,30 @@ function SizeFields({ label, dim, onChange }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 11px", marginBottom: 10 }}>
       <Ruler size={14} color={C.fern} />
       <span style={{ fontSize: 12.5, color: C.fernDk, fontWeight: 600 }}>{label}</span>
-      <input type="number" min="0" step="0.5" value={draft.w} onChange={(e) => setDraft((d) => ({ ...d, w: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder="width" style={inp} />
+      <input type="number" min="0" step="0.5" value={draft.w} onChange={(e) => setDraft((d) => ({ ...d, w: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder={aName} style={inp} />
       <span style={{ color: C.muted }}>×</span>
-      <input type="number" min="0" step="0.5" value={draft.l} onChange={(e) => setDraft((d) => ({ ...d, l: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder="length" style={inp} />
+      <input type="number" min="0" step="0.5" value={draft.l} onChange={(e) => setDraft((d) => ({ ...d, l: e.target.value }))} onKeyDown={(e) => e.key === "Enter" && apply()} placeholder={bName} style={inp} />
       <span style={{ fontSize: 12, color: C.muted }}>m{area ? ` · ${area} m²` : ""}</span>
       {dirty && <button onClick={apply} style={{ ...btn(C.fern), padding: "6px 11px", fontSize: 12.5 }}>Apply</button>}
     </div>
+  );
+}
+
+// one number (e.g. a tree's canopy) with the same type-then-Apply behaviour as SizeFields: you can clear the box and
+// retype freely — nothing is applied until you press Apply (or Enter) with a valid number
+function NumApplyField({ value, onApply, unit = "m", title }) {
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => { setDraft(value ?? ""); }, [value]);
+  const n = Number(draft); const valid = draft !== "" && n > 0;
+  const dirty = valid && n !== Number(value || 0);
+  const apply = () => { if (valid) onApply(n); };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+      <input type="number" inputMode="decimal" min="0" step="0.1" value={draft} title={title} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && apply()}
+        style={{ width: 70, boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 8px", fontSize: 13, background: C.panel2, fontFamily: "inherit", color: C.ink }} />
+      <span style={{ fontSize: 11, color: C.muted }}>{unit}</span>
+      {dirty && <button onClick={apply} style={{ ...btn(C.fern), padding: "6px 11px", fontSize: 12.5 }}>Apply</button>}
+    </span>
   );
 }
 
