@@ -468,7 +468,7 @@ function sectionCountLabel(s, all) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 149";
+const APP_BUILD = "2026-06-25 · build 150";
 const BUILD_NUM = Number((APP_BUILD.match(/build (\d+)/) || [])[1]) || 0;
 // SCHEMA_VERSION: raise this whenever saved data changes shape in a way an OLDER copy of the app would mangle (a new kind of area,
 // a new nesting rule…). Every save is stamped with it; a copy of the app that meets data from a newer layout refuses to save over it.
@@ -2119,7 +2119,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{p.plant}{dup.length > 1 ? ` #${idx + 1}` : ""}</span>
-                <button onClick={() => toCentre(p)} style={btnOutline(C.fern)}><Crosshair size={14} /> To centre</button>
+                <ConfirmButton onConfirm={() => toCentre(p)} style={btnOutline(C.fern)} armedLabel="Move to centre?"><Crosshair size={14} /> To centre</ConfirmButton>
                 <MoveToggle on={moveId === p.id} onToggle={() => setMoveId(moveId === p.id ? null : p.id)} />
                 <ConfirmButton onConfirm={() => { removePlant(p.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
               </div>
@@ -2253,7 +2253,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             return (
               <div style={{ ...card, padding: 12, marginTop: 10 }}>
                 <strong style={{ fontSize: 13.5, color: C.fernDk }}>{section.kind === "berry" ? "Plants" : "Trees"} in this area · {plants.length}</strong>
-                <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 6px", lineHeight: 1.5 }}>Tap one to find it on the map. <strong>To centre</strong> brings it to the middle if it's hidden under another or out of sight.</p>
+                <p style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 6px", lineHeight: 1.5 }}>Tap one to find it on the map. <strong>To centre</strong> (tap twice to confirm) brings it to the middle if it's hidden under another or out of sight.</p>
                 <div style={{ maxHeight: 260, overflowY: "auto" }}>
                   {sorted.map((p) => {
                     const on = editMode ? editSel === p.id : selPlant?.id === p.id;
@@ -2265,7 +2265,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                         <span style={{ width: 11, height: 11, borderRadius: "50%", background: colour, flexShrink: 0, boxShadow: "0 0 0 1px rgba(0,0,0,.25)" }} />
                         <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 110px", minWidth: 0 }}>{p.plant}{numberOf(p)}{p.shape === "hedge" ? " (hedge)" : ""}</span>
                         <span style={{ fontSize: 11.5, color: shown ? C.muted : C.harvest }}>{!shown ? (future ? `not planted until ${fmtDate(p.planted)}` : "not on the map for this date") : p.planted ? `planted ${fmtDate(p.planted)}` : ""}</span>
-                        <button onClick={(e) => { e.stopPropagation(); toCentre(p); }} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }}><Crosshair size={12} /> To centre</button>
+                        <ConfirmButton onConfirm={() => toCentre(p)} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }} armedLabel="Move to centre?"><Crosshair size={12} /> To centre</ConfirmButton>
                       </div>);
                   })}
                 </div>
@@ -2293,7 +2293,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               <div style={{ ...card, padding: 12, marginTop: 10 }}>
                 <strong style={{ fontSize: 13.5, color: C.fernDk }}>Beds in this area · {beds.length}</strong>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{totM2 > 0 ? `${totM2} m² of beds · ` : ""}{Math.round(totOcc / totSq * 100)}% planted overall</div>
-                <p style={{ fontSize: 11.5, color: C.muted, margin: "4px 0 6px", lineHeight: 1.5 }}>Tap a bed to find it on the map. <strong>Open</strong> takes you inside it; <strong>To centre</strong> brings it to the middle if it's hidden under another.</p>
+                <p style={{ fontSize: 11.5, color: C.muted, margin: "4px 0 6px", lineHeight: 1.5 }}>Tap a bed to find it on the map. <strong>Open</strong> takes you inside it; <strong>To centre</strong> (tap twice to confirm) brings it to the middle if it's hidden under another.</p>
                 <div style={{ maxHeight: 320, overflowY: "auto" }}>
                   {infos.map(([b, i]) => {
                     const on = hlBed === b.id || (editMode && editSel === b.id);
@@ -2311,7 +2311,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                           {i.ready > 0 && <span style={{ ...chip, fontSize: 11, padding: "2px 8px", background: hexA(C.harvest, .18), color: C.ink, border: `1px solid ${hexA(C.harvest, .55)}` }}>🧺 {i.ready} ready</span>}
                           {i.planned > 0 && <span style={{ ...chip, fontSize: 11, padding: "2px 8px", background: hexA(C.sage, .22), color: C.ink, border: "none" }}>⏳ {i.planned} planned</span>}
                           <button onClick={(e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }} style={{ ...btn(C.fern), padding: "4px 10px", fontSize: 12 }}><ArrowRight size={12} /> Open</button>
-                          <button onClick={(e) => { e.stopPropagation(); bedToCentre(b); }} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }}><Crosshair size={12} /> To centre</button>
+                          <ConfirmButton onConfirm={() => bedToCentre(b)} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }} armedLabel="Move to centre?"><Crosshair size={12} /> To centre</ConfirmButton>
                         </div>
                       </div>);
                   })}
