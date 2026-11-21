@@ -333,6 +333,18 @@ const STOCK_BREEDS = {
   chicken: ["Brown Shaver", "Hyline Brown", "Plymouth Rock", "Orpington", "Wyandotte", "Leghorn", "Rhode Island Red", "Silkie", "Australorp", "Araucana", "Frizzle", "Barnevelder", "Light Sussex", "Pekin"],
 };
 
+// plural headings for the "Areas at a glance" list, which groups areas by type
+const KIND_PLURAL = { garden: "Vegetable gardens", greenhouse: "Greenhouses", orchard: "Orchards", berry: "Berry patches", paddock: "Paddocks", coop: "Coops & runs" };
+// areas ordered by type (same order as the add-area buttons), then alphabetically by name ("Orchard 2" before "Orchard 10");
+// the hidden scattered-trees area always goes last
+function sortedAreas(sections) {
+  const order = Object.keys(SECTION_KINDS);
+  return sections.slice().sort((a, b) => (a.loose ? 1 : 0) - (b.loose ? 1 : 0)
+    || order.indexOf(a.kind) - order.indexOf(b.kind)
+    || String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true, sensitivity: "base" }));
+}
+const areaGroup = (s) => s.loose ? "loose" : s.kind;
+
 // animals living in a stock area, summed by species — for the little icons on the property map
 function stockBadges(s) {
   const by = {}; (s.mobs || []).forEach((m) => { const n = mobHead(m); if (n) by[m.species] = (by[m.species] || 0) + n; });
@@ -356,7 +368,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 143";
+const APP_BUILD = "2026-06-25 · build 145";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1048,6 +1060,28 @@ function useDrag(containerRef, applyPatch) {
   return { onPointerDown, onPointerMove: noop, onPointerUp: noop, moved: () => movedRef.current };
 }
 
+// live pixel size of an element — used to decide how much label an area box has room for
+function useElSize(ref) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const read = () => setSize((p) => { const w = el.clientWidth, h = el.clientHeight; return (p.w === w && p.h === h) ? p : { w, h }; });
+    read();
+    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", read); return () => window.removeEventListener("resize", read); }
+    const ro = new ResizeObserver(read); ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
+
+// how much label an area box has room for at its current on-screen size
+function areaDetail(pxW, pxH) {
+  if (pxW < 20 || pxH < 16) return "dot";    // just the coloured box
+  if (pxW < 56 || pxH < 30) return "icon";   // an icon only
+  if (pxW < 100 || pxH < 50) return "name";  // icon + name
+  return "full";                             // name, animals, size & counts
+}
+
 // two-finger pinch zoom on a scrollable container; keeps the point between the fingers roughly still as zoom changes
 function usePinchZoom(scrollRef, zoom, setZoom, min = 1, max = 4) {
   const gesture = useRef(null);
@@ -1239,6 +1273,7 @@ function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setVie
 function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, display }) {
   const lib = useLib();
   const wrapRef = useRef(null);
+  const mapSize = useElSize(wrapRef);
   const [uploading, setUploading] = useState(false);
   const zoom = data.zoom ?? 1;
   const setZoom = (v) => setData((d) => ({ ...d, zoom: typeof v === "function" ? v(d.zoom ?? 1) : v }));
@@ -1404,20 +1439,29 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
         {data.sections.filter((s) => !s.loose).map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
           const count = sectionCountLabel(s).text;
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
+          const mw = mapSize.w || 380, mh = mapSize.h || 238; // sensible phone-size default until the map has been measured
+          const pxW = s.w / 100 * mw, pxH = s.h / 100 * mh;
+          const lvl = areaDetail(pxW, pxH);
+          const bd = k.uses === "stock" ? stockBadges(s) : [];
+          const showBd = bd.length > 0 && (lvl === "full" || (lvl === "name" && pxH >= 44 && pxW >= 64));
+          const tiny = lvl === "dot" || lvl === "icon";
           return (
             <div key={s.id} onPointerDown={editMode && moveId === s.id ? (e) => drag.onPointerDown(e, s, "move") : undefined}
               onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode && moveId === s.id ? "move" : "pointer", touchAction: editMode && moveId === s.id ? "none" : "auto", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && moveId === s.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
-                <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
-              </div>
-              {k.uses === "stock" && s.w >= 8 && s.h >= 8 && (() => { const bd = stockBadges(s); return bd.length ? (
+              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, boxSizing: "border-box", minWidth: 6, minHeight: 6, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode && moveId === s.id ? "move" : "pointer", touchAction: editMode && moveId === s.id ? "none" : "auto", background: hexA(k.color, .42), border: `${tiny ? 1.5 : editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: tiny ? 5 : 9, padding: lvl === "dot" ? 0 : lvl === "icon" ? 2 : 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: lvl === "icon" ? "center" : "space-between", alignItems: lvl === "icon" ? "center" : undefined, boxShadow: editMode && moveId === s.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
+              {lvl === "icon" && (bd.length ? <span style={{ fontSize: 14, lineHeight: 1 }}>{bd[0].emoji}</span> : <Icon size={14} />)}
+              {(lvl === "name" || lvl === "full") && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
+                  <Icon size={13} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                </div>)}
+              {showBd && (
                 <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", alignContent: "center", justifyContent: "center" }}>
                   {bd.map((b) => <span key={b.sp} style={{ display: "inline-flex", alignItems: "center", gap: 2, textShadow: "0 1px 3px rgba(0,0,0,.7)" }}><span style={{ fontSize: 17, lineHeight: 1 }}>{b.emoji}</span><span style={{ fontSize: 11.5, fontWeight: 700 }}>{b.n}</span></span>)}
-                </div>) : null; })()}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
-                <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
-              </div>
+                </div>)}
+              {lvl === "full" && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 4 }}>
+                  <span style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{count}{dim ? ` · ${dim}` : ""}</span>
+                </div>)}
             </div>
           ); })}
         {looseTrees.map((t) => { const isBush = t.icon === "bush" || t.icon === "cane"; const dia = t.dia ?? (isBush ? 2.5 : 4); const on = editMode && treeSel === t.id; const armed = editMode && moveId === t.id;
@@ -1427,7 +1471,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               onClick={editMode ? (e) => { e.stopPropagation(); if (dragTrees.moved()) return; if (treeSel !== t.id) setMoveId(null); setTreeSel(t.id); setEditSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }}
               style={{ position: "absolute", left: `${t.x}%`, top: `${t.y}%`, width: `${dia}%`, minWidth: 18, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", zIndex: 3 }}>
               <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF", .28)}, ${canopy} 62%)`, border: `2px solid ${armed ? C.harvest : on ? "#fff" : ring}`, boxShadow: armed ? `0 0 0 3px ${hexA(C.harvest, .55)}` : on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
-              <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 9.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{t.plant}</div>
+              {(zoom >= 1.8 || on) && <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 9.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{t.plant}</div>}
             </div>); })}
       </MapShell>
       <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Tap an area or tree to select it — then tap Move to drag it, or set its size above. Nothing moves unless you press Move. Tap “Done editing” when finished." : "Tap a section to go inside it, or tap a tree for its details. Tap “Edit layout” to move or add areas and trees."}</p>
@@ -1440,7 +1484,8 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           </button>
           {showAreas && (
             <div style={{ marginTop: 6 }}>
-              {data.sections.map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
+              {sortedAreas(data.sections).map((s, i, arr) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
+                const firstInGroup = i === 0 || areaGroup(arr[i - 1]) !== areaGroup(s);
                 const secReal = s.loose ? data.dimM : realOf(s.w, s.h, data.dimM);
                 const dim = s.loose ? null : dimLabel(secReal);
                 const bd = k.uses === "stock" ? stockBadges(s) : [];
@@ -1448,13 +1493,16 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
                 const detail = k.uses === "stock" ? (bd.length ? bd.map((b) => `${b.emoji} ${b.n}`).join("   ") : "empty") : `${sectionCountLabel(s).text}${bm ? ` · ${bm} m² of beds` : ""}`;
                 const on = editMode && editSel === s.id;
                 return (
-                  <div key={s.id} onClick={() => { if (editMode) { if (!s.loose) { if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } } else setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 6px", borderTop: `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(k.color, .12) : "transparent" }}>
+                  <React.Fragment key={s.id}>
+                  {firstInGroup && <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: .5, margin: i === 0 ? "2px 0 2px 2px" : "12px 0 2px 2px" }}>{s.loose ? "Scattered trees" : (KIND_PLURAL[s.kind] || k.label)}</div>}
+                  <div onClick={() => { if (editMode) { if (!s.loose) { if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } } else setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 6px", borderTop: firstInGroup ? "none" : `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(k.color, .12) : "transparent" }}>
                     <Icon size={15} color={k.color} style={{ flexShrink: 0 }} />
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 120px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                     {dim && <span style={{ fontSize: 12, color: C.muted }}>{dim}</span>}
                     <span style={{ fontSize: 12, color: C.fern, fontWeight: 600 }}>{detail}</span>
-                  </div>); })}
+                  </div>
+                  </React.Fragment>); })}
             </div>)}
         </div>)}
     </div>
@@ -1714,7 +1762,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                 <div key={b.id}
                   onPointerDown={editMode && moveId === b.id ? (e) => drag.onPointerDown(e, b, "move") : undefined}
                   onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== b.id) setMoveId(null); setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode && moveId === b.id ? "move" : "pointer", touchAction: editMode && moveId === b.id ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && moveId === b.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, boxSizing: "border-box", transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode && moveId === b.id ? "move" : "pointer", touchAction: editMode && moveId === b.id ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && moveId === b.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>{anyPlanned ? <span style={{ fontSize: 10 }}>⏳</span> : null}</div>
                   {!isPhone && <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n];
