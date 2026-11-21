@@ -345,7 +345,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 141";
+const APP_BUILD = "2026-06-25 · build 142";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -657,7 +657,7 @@ function NorthControl({ north, setNorth, hemi = "south" }) {
   );
 }
 
-function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, setZoom, north, hemi, onBg, uploading, placeholder, crop, gray, children }) {
+function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, setZoom, north, hemi, onBg, uploading, placeholder, crop, gray, lockTouch = false, children }) {
   // crop = { bg, ar, region:{x,y,w,h} } shows a sub-rectangle of a parent image
   const scrollRef = useRef(null);
   usePinchZoom(scrollRef, zoom, setZoom);
@@ -677,7 +677,7 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, set
     <div style={{ position: "relative", width: "100%" }}>
       <div ref={scrollRef} style={{ position: "relative", width: "100%", maxHeight: "68vh", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
         <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
-          style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: "auto" }}>
+          style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: lockTouch ? "none" : "auto" }}>
           {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
           {placeholder}
           {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
@@ -1017,10 +1017,14 @@ function useDrag(containerRef, applyPatch) {
       applyRef.current(d.id, { x: clamp(d.x + dx, 0, 100 - d.w), y: clamp(d.y + dy, 0, 100 - d.h) });
     };
     const up = () => { if (!ref.current) return; ref.current = null; setTimeout(() => { movedRef.current = false; }, 0); };
+    // preventDefault on a *pointer* move does not stop native scrolling — only touch-action or a non-passive touchmove does.
+    // So while an item is being dragged, cancel touch scrolling so the map can't pan underneath it.
+    const holdScroll = (e) => { if (ref.current && e.cancelable) e.preventDefault(); };
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); };
+    window.addEventListener("touchmove", holdScroll, { passive: false });
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); window.removeEventListener("touchmove", holdScroll); };
   }, []);
   const onPointerDown = (e, item, mode) => {
     e.stopPropagation();
@@ -1373,7 +1377,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
             </div>}
         </div>); })()}
 
-      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} setZoom={setZoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false}
+      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} setZoom={setZoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} lockTouch={editMode && !!moveId}
         placeholder={!data.bg && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
             <div style={{ background: "rgba(245,243,234,.94)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "18px 20px", maxWidth: 380, boxShadow: "0 4px 16px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", alignItems: "center", color: C.ink }}>
@@ -1645,7 +1649,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 320px", minWidth: 280, maxWidth: mapW }}>
           <div style={{ marginBottom: 8 }}><ZoomBar zoom={zoom} setZoom={setZoom} /></div>
-          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false}
+          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false} lockTouch={editMode && !!moveId}
             crop={(!section.bg && data.bg) ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
             placeholder={!section.bg && (usesBeds ? (section.beds || []).length === 0 : (section.plants || []).length === 0) && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 20 }}>
