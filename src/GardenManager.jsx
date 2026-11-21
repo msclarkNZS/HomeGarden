@@ -222,6 +222,7 @@ const SECTION_KINDS = {
   orchard:    { label:"Orchard",           icon:TreeDeciduous, color:"#5E7E4E", uses:"plants" },
   berry:      { label:"Berry patch",       icon:Cherry,        color:"#A23E55", uses:"plants" },
   paddock:    { label:"Paddock",           icon:Fence,         color:"#6E8B5A", uses:"stock", grazes:true },
+  zone:       { label:"Chicken zone",      icon:Egg,            color:"#A8742A", uses:"zone" }, // a group of coops, laid out inside it
   coop:       { label:"Coop & run",        icon:Bird,           color:"#C28F2E", uses:"stock" },
 };
 // livestock species — which areas they live in, and the usual mob classes
@@ -334,16 +335,18 @@ const STOCK_BREEDS = {
 };
 
 // plural headings for the "Areas at a glance" list, which groups areas by type
-const KIND_PLURAL = { garden: "Vegetable gardens", greenhouse: "Greenhouses", orchard: "Orchards", berry: "Berry patches", paddock: "Paddocks", coop: "Coops & runs" };
+const KIND_PLURAL = { garden: "Vegetable gardens", greenhouse: "Greenhouses", orchard: "Orchards", berry: "Berry patches", paddock: "Paddocks", zone: "Chicken zones", coop: "Coops & runs" };
 // areas ordered by type (same order as the add-area buttons), then alphabetically by name ("Orchard 2" before "Orchard 10");
 // the hidden scattered-trees area always goes last
 function sortedAreas(sections) {
   const order = Object.keys(SECTION_KINDS);
-  return sections.slice().sort((a, b) => (a.loose ? 1 : 0) - (b.loose ? 1 : 0)
-    || order.indexOf(a.kind) - order.indexOf(b.kind)
-    || String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true, sensitivity: "base" }));
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true, sensitivity: "base" });
+  const top = sections.filter((s) => !s.parentId).sort((a, b) => (a.loose ? 1 : 0) - (b.loose ? 1 : 0) || order.indexOf(a.kind) - order.indexOf(b.kind) || byName(a, b));
+  const out = [];
+  top.forEach((s) => { out.push(s); sections.filter((c) => c.parentId === s.id).sort(byName).forEach((c) => out.push(c)); }); // a zone's coops follow it
+  return out;
 }
-const areaGroup = (s) => s.loose ? "loose" : s.kind;
+const areaGroup = (s, all = []) => { if (s.parentId) { const p = all.find((x) => x.id === s.parentId); if (p) return areaGroup(p, all); } return s.loose ? "loose" : s.kind; };
 
 // animals living in a stock area, summed by species — for the little icons on the property map
 function stockBadges(s) {
@@ -356,10 +359,82 @@ function bedAreaM2(s, secReal) {
   const t = (s.beds || []).reduce((n, b) => { const r = realOf(b.w, b.h, secReal); return n + (r ? r.w * r.l : 0); }, 0);
   return t > 0 ? Math.round(t) : null;
 }
-function sectionCountLabel(s) {
+// --- chicken zones: an area that holds coops. A coop inside a zone is still a normal coop area (so its animals, egg logs,
+// reports and jobs all work as before); it just carries parentId and its box is a % of the zone instead of the property.
+const kidsOf = (sections, zoneId) => sections.filter((s) => s.parentId === zoneId);
+
+// animals living in an area; a zone adds up all its coops
+function areaBadges(sections, s) {
+  if (SECTION_KINDS[s.kind]?.uses === "zone") {
+    const by = {}; kidsOf(sections, s.id).forEach((c) => stockBadges(c).forEach((b) => { by[b.sp] = (by[b.sp] || 0) + b.n; }));
+    return Object.entries(by).map(([sp, n]) => ({ sp, n, emoji: SPECIES[sp]?.emoji || "🐾" }));
+  }
+  return stockBadges(s);
+}
+
+// the box (in % of the property) that comfortably surrounds some coops
+function zoneBoxAround(coops) {
+  const x0 = Math.min(...coops.map((c) => c.x)), y0 = Math.min(...coops.map((c) => c.y));
+  const x1 = Math.max(...coops.map((c) => c.x + c.w)), y1 = Math.max(...coops.map((c) => c.y + c.h));
+  const padX = Math.max(1.5, (x1 - x0) * 0.12), padY = Math.max(1.5, (y1 - y0) * 0.12);
+  const x = clamp(x0 - padX, 0, 100), y = clamp(y0 - padY, 0, 100);
+  return { x, y, w: clamp(x1 + padX, 0, 100) - x, h: clamp(y1 + padY, 0, 100) - y };
+}
+
+// bring standalone coops into a zone: each keeps exactly the same spot and real-world size (its box is just re-expressed relative to the zone)
+function adoptCoops(d, zoneId, coopIds) {
+  const z = d.sections.find((s) => s.id === zoneId); if (!z) return d;
+  const ids = new Set(coopIds);
+  return { ...d, sections: d.sections.map((c) => {
+    if (!ids.has(c.id) || c.kind !== "coop" || c.parentId) return c;
+    const w = Math.min(100, c.w / z.w * 100), h = Math.min(100, c.h / z.h * 100);
+    return { ...c, parentId: z.id, x: clamp((c.x - z.x) / z.w * 100, 0, 100 - w), y: clamp((c.y - z.y) / z.h * 100, 0, 100 - h), w, h };
+  }) };
+}
+
+// delete a zone but keep its coops (and animals): they go back onto the property map where they were
+function releaseCoops(d, zoneId) {
+  const z = d.sections.find((s) => s.id === zoneId); if (!z) return d;
+  return { ...d, sections: d.sections.filter((s) => s.id !== zoneId).map((c) => {
+    if (c.parentId !== zoneId) return c;
+    const { parentId, ...rest } = c;
+    return { ...rest, x: z.x + c.x / 100 * z.w, y: z.y + c.y / 100 * z.h, w: Math.max(0.2, c.w / 100 * z.w), h: Math.max(0.2, c.h / 100 * z.h) };
+  }) };
+}
+
+// animals still in an area that gets deleted are archived rather than lost (same treatment as removing a mob)
+function mobsToArchive(section) {
+  return (section.mobs || []).flatMap((mob) => (mob.individuals || []).map((a) => ({ ...a, species: mob.species, klass: a.klass || mob.klass, fromMob: mob.name || SPECIES[mob.species]?.label, fromArea: section.name, status: "removed", archived: todayISO() })));
+}
+
+// --- moving trees between areas (for merging areas) ---
+const plantAreas = (sections) => sections.filter((s) => SECTION_KINDS[s.kind]?.uses === "plants");
+// move plants from one plant area to another, keeping each at the same spot on the property and the same real size
+function transferPlants(d, fromId, plantIds, toId) {
+  if (fromId === toId) return d;
+  const src = d.sections.find((s) => s.id === fromId), tgt = d.sections.find((s) => s.id === toId);
+  if (!src || !tgt) return d;
+  const ids = new Set(plantIds); const moving = (src.plants || []).filter((p) => ids.has(p.id)); if (!moving.length) return d;
+  const boxOf = (a) => a.loose ? { x: 0, y: 0, w: 100, h: 100 } : a;
+  const realOfArea = (a) => a.loose ? d.dimM : realOf(a.w, a.h, d.dimM);
+  const sb = boxOf(src), tb = boxOf(tgt), sr = realOfArea(src), tr = realOfArea(tgt);
+  const converted = moving.map((p) => {
+    const ax = sb.x + p.x / 100 * sb.w, ay = sb.y + p.y / 100 * sb.h;
+    const out = { ...p, x: clamp((ax - tb.x) / tb.w * 100, 3, 97), y: clamp((ay - tb.y) / tb.h * 100, 3, 97) };
+    if (sr && tr) {
+      if (p.shape === "hedge") { const r = realOf(p.w ?? 30, p.h ?? 8, sr); if (r) Object.assign(out, boxFromReal(r, tr)); }
+      else { const isBush = p.icon === "bush" || p.icon === "cane"; out.dia = clamp((p.dia ?? (isBush ? 8 : 12)) / 100 * sr.w / tr.w * 100, 0.2, 80); }
+    }
+    return out;
+  });
+  return { ...d, sections: d.sections.map((a) => a.id === fromId ? { ...a, plants: (a.plants || []).filter((p) => !ids.has(p.id)) } : a.id === toId ? { ...a, plants: [...(a.plants || []), ...converted] } : a) };
+}
+
+function sectionCountLabel(s, all) {
   const k = SECTION_KINDS[s.kind];
   let n, word;
   if (k.uses === "beds") { n = (s.beds || []).length; word = "bed"; }
+  else if (k.uses === "zone") { n = all ? kidsOf(all, s.id).length : 0; word = "coop"; }
   else if (k.uses === "plants") { n = (s.plants || []).length; word = "plant"; }
   else { n = (s.mobs || []).length; word = "mob"; }
   return { n, text: n ? `${n} ${word}${n === 1 ? "" : "s"}` : "empty" };
@@ -368,7 +443,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 145";
+const APP_BUILD = "2026-06-25 · build 146";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -458,6 +533,8 @@ function normalize(d) {
   base.sections = base.sections.map((s) => ({ ...s, beds: (s.beds || []).map((b) => b.plantings ? { ...b, plantings: b.plantings.map((p) => (p.planned && !p.confirmed && p.planted && p.planted <= todayISO()) ? { ...p, planted: _tomorrow } : p) } : b) }));
   if (base.stockEdits) { const e = { ...base.stockEdits }; ["layer", "broiler"].forEach((k) => { if (e[k]) { e.chicken = e.chicken || e[k]; delete e[k]; } }); base.stockEdits = e; }
   base.sections = base.sections.filter((s) => SECTION_KINDS[s.kind]);
+  { const known = new Set(base.sections.map((s) => s.id));
+    base.sections = base.sections.map((s) => { if (!s.parentId || known.has(s.parentId)) return s; const { parentId, ...rest } = s; return { ...rest, x: 40, y: 40, w: 8, h: 8 }; }); }
   // Areas show a live crop of the property photo; older builds saved a per-area image.
   // Strip those leftovers so every area falls back to the crop consistently.
   base.sections = base.sections.map((s) => { const { bg, bgAR, ...rest } = s;
@@ -1260,6 +1337,7 @@ function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setVie
   if (nav.level === "section") {
     const section = data.sections.find((s) => s.id === nav.sectionId);
     if (!section) { setNav({ level: "overview" }); return null; }
+    if (section.kind === "zone") return <ZoneView {...{ data, setData, section, setNav, setSel, display }} />;
     if (nav.bedId) {
       const bed = (section.beds || []).find((b) => b.id === nav.bedId);
       if (!bed) { setNav({ level: "section", sectionId: section.id }); return null; }
@@ -1283,10 +1361,24 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   const [treeSel, setTreeSel] = useState(null);
   const [moveId, setMoveId] = useState(null); // the one selected area/tree that is currently unlocked for dragging
   const [showAreas, setShowAreas] = useState(true);
+  const [groupOpen, setGroupOpen] = useState(false); // the "Group coops into a zone" picker
+  const [groupSel, setGroupSel] = useState({});
   const [treePick, setTreePick] = useState(false);
   const [treeQ, setTreeQ] = useState("");
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
-  const delSection = (id) => setData((d) => ({ ...d, sections: d.sections.filter((s) => s.id !== id) }));
+  // deleting a zone keeps its coops (they go back on the map); deleting any other area archives the animals still in it
+  const delSection = (id) => setData((d) => {
+    const a = d.sections.find((x) => x.id === id); if (!a) return d;
+    if (SECTION_KINDS[a.kind]?.uses === "zone") return releaseCoops(d, id);
+    return { ...d, archive: [...(d.archive || []), ...mobsToArchive(a)], sections: d.sections.filter((x) => x.id !== id) };
+  });
+  const makeZone = () => {
+    const picked = data.sections.filter((x) => groupSel[x.id] && x.kind === "coop" && !x.parentId); if (!picked.length) return;
+    const n = data.sections.filter((x) => x.kind === "zone").length + 1;
+    const zone = { id: uid(), name: `Chicken zone${n > 1 ? " " + n : ""}`, kind: "zone", ...zoneBoxAround(picked), bg: null, beds: [], plants: [], mobs: [] };
+    setData((d) => adoptCoops({ ...d, sections: [...d.sections, zone] }, zone.id, picked.map((c) => c.id)));
+    setGroupOpen(false); setGroupSel({}); setEditSel(zone.id); setTreeSel(null);
+  };
   const drag = useDrag(wrapRef, patchSection);
 
   // Trees placed around the property itself (not inside a garden or orchard) live in a hidden "loose" area that covers the
@@ -1327,6 +1419,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           <button key={k} onClick={() => addSection(k)} style={btn(v.color)}><Plus size={14} /> {v.label}</button>
         ))}
         {editMode && <button onClick={() => setTreePick(!treePick)} style={btn(C.soil)}><TreeDeciduous size={14} /> Tree</button>}
+        {editMode && data.sections.some((x) => x.kind === "coop" && !x.parentId) && <button onClick={() => setGroupOpen(!groupOpen)} style={btnOutline(C.soil)}><Egg size={14} /> Group coops</button>}
       </div>
       {editMode && treePick && (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
@@ -1346,6 +1439,22 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           </div>
           <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>It drops in the middle of the map — drag it into place. Tap it to set its canopy size.</p>
         </div>)}
+      {editMode && groupOpen && (() => { const spare = data.sections.filter((x) => x.kind === "coop" && !x.parentId); const n = spare.filter((x) => groupSel[x.id]).length;
+        return (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>Group coops into a chicken zone</strong>
+            <button onClick={() => setGroupOpen(false)} style={iconBtn}><X size={16} /></button>
+          </div>
+          <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 8px", lineHeight: 1.5 }}>Tick the coops that belong together. A zone is drawn around them and each coop stays exactly where it is, at the same size, with its animals — you just open the zone to see them all laid out.</p>
+          {spare.map((c) => { const bd = stockBadges(c); return (
+            <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13, cursor: "pointer", borderTop: `1px solid ${C.line}` }}>
+              <input type="checkbox" checked={!!groupSel[c.id]} onChange={(e) => setGroupSel((p) => ({ ...p, [c.id]: e.target.checked }))} style={{ accentColor: C.fern, width: 16, height: 16 }} />
+              <span style={{ flex: 1, fontWeight: 600, color: C.ink }}>{c.name}</span>
+              <span style={{ fontSize: 12, color: C.fern, fontWeight: 600 }}>{bd.length ? bd.map((b) => `${b.emoji} ${b.n}`).join("  ") : "empty"}</span>
+            </label>); })}
+          <button onClick={makeZone} disabled={!n} style={{ ...btn(C.fern), marginTop: 10, opacity: n ? 1 : .4 }}><Egg size={14} /> Create zone from {n || ""} coop{n === 1 ? "" : "s"}</button>
+        </div>); })()}
       <div style={{ marginBottom: 8 }}>
         {showSettings && (
           <div style={{ ...card, padding: 12, marginTop: 4 }}>
@@ -1356,6 +1465,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               if (!old || !old.w || !old.l || !dimM || !dimM.w || !dimM.l) return { ...d, dimM };
               // keep every area at its set real size: re-derive each %-box under the new property size
               const sections = (d.sections || []).map((s) => {
+                if (s.parentId) return s; // a coop inside a zone is sized relative to its zone, and the zone keeps its own real size
                 // the hidden "trees around the property" area always covers the whole property; just hold each tree at its real size
                 if (s.loose) return { ...s, x: 0, y: 0, w: 100, h: 100, plants: (s.plants || []).map((p) => p.shape === "hedge" ? p : { ...p, dia: clamp((p.dia ?? 12) * old.w / dimM.w, 0.2, 80) }) };
                 const real = realOf(s.w, s.h, old); if (!real) return s; const bx = boxFromReal(real, dimM); return { ...s, x: s.x, y: s.y, ...bx }; });
@@ -1392,9 +1502,12 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
                 </>
               : <input type="range" min={2} max={40} value={t.dia ?? 12} onChange={(e) => patchTree(t.id, { dia: Number(e.target.value) })} style={{ flex: "1 1 120px", accentColor: C.fern }} />}
           </div>
+          <div style={{ marginTop: 10 }}>
+            <MoveAreaPicker targets={plantAreas(data.sections).filter((x) => !x.loose).map((x) => ({ id: x.id, name: x.name }))} onMove={(toId) => { setData((d) => transferPlants(d, loose.id, [t.id], toId)); setTreeSel(null); }} />
+          </div>
         </div>); })()}
 
-      {editMode && !selTree && data.sections.some((s) => !s.loose) && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s).text : "";
+      {editMode && !selTree && data.sections.some((s) => !s.loose) && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s, data.sections).text : "";
         return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
           <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area size &amp; angle</strong>
@@ -1404,7 +1517,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{s.name}</span>
                 <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
                 <MoveToggle on={moveId === s.id} onToggle={() => setMoveId(moveId === s.id ? null : s.id)} />
-                <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
+                <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={s.kind === "zone" ? `Delete zone? (its ${note} stay on the map)` : note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
               </div>
               {moveId === s.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
               {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => {
@@ -1419,11 +1532,14 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
                       const diaM = (p.dia ?? 12) / 100 * oldSectionReal.w; return { ...p, dia: clamp(diaM / real.w * 100, 0.2, 80) };
                     });
                   }
-                  patchSection(s.id, patch);
+                  // coops inside a zone also keep their real size when the zone is resized
+                  const kidPatch = {};
+                  if (oldSectionReal) kidsOf(data.sections, s.id).forEach((c) => { const r = realOf(c.w, c.h, oldSectionReal); if (r) kidPatch[c.id] = boxFromReal(r, real); });
+                  setData((d) => ({ ...d, sections: d.sections.map((x) => x.id === s.id ? { ...x, ...patch } : kidPatch[x.id] ? { ...x, ...kidPatch[x.id] } : x) }));
                 }} />
                 : <PctSizeFields w={s.w} h={s.h} onChange={({ w, h }) => patchSection(s.id, { w: clamp(w, 2, 100), h: clamp(h, 2, 100) })} />}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />
+                {s.kind !== "zone" && <RotateField rot={s.rot} onChange={(rot) => patchSection(s.id, { rot })} />}
               </div>
             </div>}
         </div>); })()}
@@ -1436,13 +1552,13 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               <p style={{ fontSize: 13.5, marginTop: 10, marginBottom: 0, lineHeight: 1.5 }}>This is your whole property. Tap <strong>Edit layout</strong> to add a satellite screenshot and drop in your garden, orchard, greenhouse and berry areas — then tap any one to go inside.</p>
             </div>
           </div>)}>
-        {data.sections.filter((s) => !s.loose).map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
-          const count = sectionCountLabel(s).text;
+        {data.sections.filter((s) => !s.loose && !s.parentId).map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
+          const count = sectionCountLabel(s, data.sections).text;
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           const mw = mapSize.w || 380, mh = mapSize.h || 238; // sensible phone-size default until the map has been measured
           const pxW = s.w / 100 * mw, pxH = s.h / 100 * mh;
           const lvl = areaDetail(pxW, pxH);
-          const bd = k.uses === "stock" ? stockBadges(s) : [];
+          const bd = (k.uses === "stock" || k.uses === "zone") ? areaBadges(data.sections, s) : [];
           const showBd = bd.length > 0 && (lvl === "full" || (lvl === "name" && pxH >= 44 && pxW >= 64));
           const tiny = lvl === "dot" || lvl === "icon";
           return (
@@ -1485,26 +1601,148 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           {showAreas && (
             <div style={{ marginTop: 6 }}>
               {sortedAreas(data.sections).map((s, i, arr) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
-                const firstInGroup = i === 0 || areaGroup(arr[i - 1]) !== areaGroup(s);
-                const secReal = s.loose ? data.dimM : realOf(s.w, s.h, data.dimM);
+                const firstInGroup = i === 0 || areaGroup(arr[i - 1], data.sections) !== areaGroup(s, data.sections);
+                const parent = s.parentId ? data.sections.find((x) => x.id === s.parentId) : null;
+                const parentReal = parent ? realOf(parent.w, parent.h, data.dimM) : null;
+                const secReal = s.loose ? data.dimM : parent ? (parentReal ? realOf(s.w, s.h, parentReal) : null) : realOf(s.w, s.h, data.dimM);
                 const dim = s.loose ? null : dimLabel(secReal);
-                const bd = k.uses === "stock" ? stockBadges(s) : [];
+                const bd = (k.uses === "stock" || k.uses === "zone") ? areaBadges(data.sections, s) : [];
                 const bm = k.uses === "beds" ? bedAreaM2(s, secReal) : null;
-                const detail = k.uses === "stock" ? (bd.length ? bd.map((b) => `${b.emoji} ${b.n}`).join("   ") : "empty") : `${sectionCountLabel(s).text}${bm ? ` · ${bm} m² of beds` : ""}`;
+                const badgeText = bd.map((b) => `${b.emoji} ${b.n}`).join("   ");
+                const detail = k.uses === "stock" ? (bd.length ? badgeText : "empty") : k.uses === "zone" ? `${sectionCountLabel(s, data.sections).text}${bd.length ? "   " + badgeText : ""}` : `${sectionCountLabel(s, data.sections).text}${bm ? ` · ${bm} m² of beds` : ""}`;
                 const on = editMode && editSel === s.id;
                 return (
                   <React.Fragment key={s.id}>
                   {firstInGroup && <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: .5, margin: i === 0 ? "2px 0 2px 2px" : "12px 0 2px 2px" }}>{s.loose ? "Scattered trees" : (KIND_PLURAL[s.kind] || k.label)}</div>}
-                  <div onClick={() => { if (editMode) { if (!s.loose) { if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } } else setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 6px", borderTop: firstInGroup ? "none" : `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(k.color, .12) : "transparent" }}>
-                    <Icon size={15} color={k.color} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 120px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                  <div onClick={() => { if (editMode && !s.parentId) { if (!s.loose) { if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } } else setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: s.parentId ? "5px 6px 5px 26px" : "7px 6px", borderTop: firstInGroup ? "none" : `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(k.color, .12) : "transparent" }}>
+                    <Icon size={s.parentId ? 13 : 15} color={k.color} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: s.parentId ? 500 : 600, color: C.ink, flex: "1 1 120px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                     {dim && <span style={{ fontSize: 12, color: C.muted }}>{dim}</span>}
                     <span style={{ fontSize: 12, color: C.fern, fontWeight: 600 }}>{detail}</span>
                   </div>
                   </React.Fragment>); })}
             </div>)}
         </div>)}
+    </div>
+  );
+}
+
+// ===================== chicken zone (a group of coops) ============
+function ZoneView({ data, setData, section, setNav, setSel, display }) {
+  const wrapRef = useRef(null);
+  const mapSize = useElSize(wrapRef);
+  const [editMode, setEditMode] = useState(false);
+  const [editSel, setEditSel] = useState(null);
+  const [moveId, setMoveId] = useState(null); // the one selected coop currently unlocked for dragging
+  const [adoptOpen, setAdoptOpen] = useState(false);
+  const [adoptSel, setAdoptSel] = useState({});
+  const zoom = section.zoom ?? 1;
+  const setZoom = (v) => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id === section.id ? { ...x, zoom: typeof v === "function" ? v(x.zoom ?? 1) : v } : x) }));
+  const patchSelf = (p) => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id === section.id ? { ...x, ...p } : x) }));
+  const patchKid = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((x) => x.id === id ? { ...x, ...p } : x) }));
+  const drag = useDrag(wrapRef, patchKid);
+  const kids = data.sections.filter((x) => x.parentId === section.id);
+  const kc = SECTION_KINDS.coop; const KIcon = kc.icon;
+  const zoneReal = realOf(section.w, section.h, data.dimM);
+  const hemi = (data.place || DEFAULT_PLACE).hemisphere;
+  const north = section.north ?? data.north ?? 0;
+  const spare = data.sections.filter((x) => x.kind === "coop" && !x.parentId);
+  const sel = kids.find((c) => c.id === editSel) || null;
+  const total = areaBadges(data.sections, section);
+  const zoneAR = (data.bg && data.bgAR) ? (section.w / section.h) * data.bgAR : 4 / 3;
+  const picked = Object.keys(adoptSel).filter((id) => adoptSel[id]).length;
+  const headOf = (c) => (c.mobs || []).reduce((n, m) => n + mobHead(m), 0);
+  const addCoop = () => {
+    const c = { id: uid(), name: `Coop ${kids.length + 1}`, kind: "coop", parentId: section.id, x: 35, y: 35, w: 30, h: 30, bg: null, beds: [], plants: [], mobs: [] };
+    setData((d) => ({ ...d, sections: [...d.sections, c] })); setEditSel(c.id); setMoveId(null);
+  };
+  const bringIn = () => { const ids = Object.keys(adoptSel).filter((id) => adoptSel[id]); if (!ids.length) return; setData((d) => adoptCoops(d, section.id, ids)); setAdoptOpen(false); setAdoptSel({}); };
+  const deleteKid = (id) => setData((d) => { const c = d.sections.find((x) => x.id === id); if (!c) return d; return { ...d, archive: [...(d.archive || []), ...mobsToArchive(c)], sections: d.sections.filter((x) => x.id !== id) }; });
+  const hint = { fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" };
+  const nameInput = { fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: C.fernDk, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", outline: "none", flex: "1 1 110px", minWidth: 0 };
+
+  return (
+    <div>
+      <button onClick={() => { setNav({ level: "overview" }); setSel && setSel(null); }} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+        <input value={section.name} onChange={(e) => patchSelf({ name: e.target.value })}
+          style={{ fontFamily: display, fontSize: 20, fontWeight: 600, border: "none", borderBottom: `1px solid ${C.line}`, background: "transparent", color: C.fernDk, outline: "none", flex: "1 1 160px" }} />
+        <button onClick={() => { setEditMode(!editMode); setMoveId(null); setEditSel(null); }} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done</> : <><Pencil size={14} /> Edit layout</>}</button>
+        {editMode && <button onClick={addCoop} style={btn(kc.color)}><Plus size={14} /> Coop</button>}
+        {editMode && spare.length > 0 && <button onClick={() => setAdoptOpen(!adoptOpen)} style={btnOutline(C.soil)}>Bring in coops</button>}
+      </div>
+      <p style={{ fontSize: 12.5, color: C.muted, margin: "0 0 10px" }}>
+        {kids.length} coop{kids.length === 1 ? "" : "s"}{total.length ? ` · ${total.map((b) => `${b.emoji} ${b.n}`).join("  ")}` : ""}{zoneReal ? ` · ${dimLabel(zoneReal)}` : ""}
+      </p>
+
+      {editMode && adoptOpen && (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Bring existing coops into this zone</strong>
+          <p style={{ fontSize: 11.5, color: C.muted, margin: "4px 0 8px", lineHeight: 1.5 }}>Each coop keeps its animals and its real size, and is placed inside this zone.</p>
+          {spare.map((c) => { const bd = stockBadges(c); return (
+            <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13, cursor: "pointer", borderTop: `1px solid ${C.line}` }}>
+              <input type="checkbox" checked={!!adoptSel[c.id]} onChange={(e) => setAdoptSel((p) => ({ ...p, [c.id]: e.target.checked }))} style={{ accentColor: C.fern, width: 16, height: 16 }} />
+              <span style={{ flex: 1, fontWeight: 600, color: C.ink }}>{c.name}</span>
+              <span style={{ fontSize: 12, color: C.fern, fontWeight: 600 }}>{bd.length ? bd.map((b) => `${b.emoji} ${b.n}`).join("  ") : "empty"}</span>
+            </label>); })}
+          <button onClick={bringIn} disabled={!picked} style={{ ...btn(C.fern), marginTop: 10, opacity: picked ? 1 : .4 }}>Bring in {picked || ""} coop{picked === 1 ? "" : "s"}</button>
+        </div>)}
+
+      {editMode && (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <strong style={{ fontSize: 13.5, color: C.fernDk }}>Coop size &amp; position</strong>
+          {!sel ? <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 0", lineHeight: 1.5 }}>Tap a coop on the map to select it, then set its size, move it, or open its animals. Use <strong>+ Coop</strong> to add another.</p>
+          : (() => { const n = headOf(sel); return (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <input value={sel.name} onChange={(e) => patchKid(sel.id, { name: e.target.value })} style={nameInput} />
+                <MoveToggle on={moveId === sel.id} onToggle={() => setMoveId(moveId === sel.id ? null : sel.id)} />
+                <button onClick={() => setNav({ level: "section", sectionId: sel.id, bedId: null })} style={btnOutline(C.fern)}>Open animals</button>
+                <ConfirmButton onConfirm={() => { deleteKid(sel.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={n ? `Delete coop — ${n} animal${n === 1 ? "" : "s"} will be archived?` : "Delete coop?"}><Trash2 size={14} /></ConfirmButton>
+              </div>
+              {moveId === sel.id && <p style={hint}>{MOVE_HINT}</p>}
+              {zoneReal ? <SizeFields label="" dim={realOf(sel.w, sel.h, zoneReal)} onChange={(real) => patchKid(sel.id, boxFromReal(real, zoneReal))} />
+                : <PctSizeFields w={sel.w} h={sel.h} onChange={({ w, h }) => patchKid(sel.id, { w: clamp(w, 2, 100), h: clamp(h, 2, 100) })} />}
+            </div>); })()}
+        </div>)}
+
+      <div style={{ maxWidth: `min(100%, calc(62vh * ${zoneAR}))`, margin: "0 auto" }}>
+        <MapShell mapRef={wrapRef} drag={drag} bg={null} bgAR={null} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi}
+          onBg={() => { setEditSel(null); setMoveId(null); }} gray={data.grayBg !== false} lockTouch={editMode && !!moveId}
+          crop={data.bg ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
+          placeholder={kids.length === 0 && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, textAlign: "center" }}>
+              <div style={{ background: "rgba(245,243,234,.94)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "14px 16px", maxWidth: 300, fontSize: 13, lineHeight: 1.5, color: C.ink }}>No coops here yet. Tap <strong>Edit layout</strong>, then <strong>+ Coop</strong> — or <strong>Bring in coops</strong> you already have.</div>
+            </div>)}>
+          {kids.map((c) => {
+            const mw = mapSize.w || 380, mh = mapSize.h || 285;
+            const pxW = c.w / 100 * mw, pxH = c.h / 100 * mh;
+            const lvl = areaDetail(pxW, pxH); const tiny = lvl === "dot" || lvl === "icon";
+            const bd = stockBadges(c);
+            const showBd = bd.length > 0 && (lvl === "full" || (lvl === "name" && pxH >= 44 && pxW >= 64));
+            const armed = editMode && moveId === c.id;
+            const dim = zoneReal ? dimLabel(realOf(c.w, c.h, zoneReal)) : null;
+            const foot = [bd.length ? null : "empty", dim].filter(Boolean).join(" · ");
+            return (
+              <div key={c.id} onPointerDown={armed ? (e) => drag.onPointerDown(e, c, "move") : undefined}
+                onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== c.id) setMoveId(null); setEditSel(c.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: c.id, bedId: null }); }}
+                style={{ position: "absolute", left: `${c.x}%`, top: `${c.y}%`, width: `${c.w}%`, height: `${c.h}%`, boxSizing: "border-box", minWidth: 6, minHeight: 6, transform: c.rot ? `rotate(${c.rot}deg)` : undefined, cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", background: hexA(kc.color, .42), border: `${tiny ? 1.5 : editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${kc.color}`, borderRadius: tiny ? 5 : 9, padding: lvl === "dot" ? 0 : lvl === "icon" ? 2 : 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: lvl === "icon" ? "center" : "space-between", alignItems: lvl === "icon" ? "center" : undefined, boxShadow: armed ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === c.id ? `0 0 0 3px #fff, 0 0 0 5px ${kc.color}` : undefined }}>
+                {lvl === "icon" && (bd.length ? <span style={{ fontSize: 14, lineHeight: 1 }}>{bd[0].emoji}</span> : <KIcon size={14} />)}
+                {(lvl === "name" || lvl === "full") && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
+                    <KIcon size={13} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                  </div>)}
+                {showBd && (
+                  <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", alignContent: "center", justifyContent: "center" }}>
+                    {bd.map((b) => <span key={b.sp} style={{ display: "inline-flex", alignItems: "center", gap: 2, textShadow: "0 1px 3px rgba(0,0,0,.7)" }}><span style={{ fontSize: 17, lineHeight: 1 }}>{b.emoji}</span><span style={{ fontSize: 11.5, fontWeight: 700 }}>{b.n}</span></span>)}
+                  </div>)}
+                {lvl === "full" && foot && <div style={{ fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>{foot}</div>}
+              </div>);
+          })}
+        </MapShell>
+      </div>
+      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Tap a coop to select it — then tap Move to drag it, or set its size above. Nothing moves unless you press Move. Tap “Done” when finished." : "Tap a coop to see its animals. Tap “Edit layout” to move, resize or add coops."}</p>
     </div>
   );
 }
@@ -1536,10 +1774,14 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const shadeDir = dirLabel((hemi === "south" ? north : north + 180) + 180);
   const mapWPresets = isPhone ? MAP_W_PHONE : MAP_W;
   const mapW = mapWPresets[section.mapSize || data.mapSize] || mapWPresets.medium;
+  const moveTargets = plantAreas(data.sections).filter((x) => x.id !== section.id).map((x) => ({ id: x.id, name: x.name }));
+  // move plants to another area, then follow them there
+  const sendPlants = (ids, toId, andSelect) => { setData((d) => transferPlants(d, section.id, ids, toId)); setNav({ level: "section", sectionId: toId, bedId: null }); setSel(andSelect ? { kind: "marker", sectionId: toId, id: andSelect } : null); };
 
   const patchSection = (p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, ...p } : s) }));
 
-  if (k.uses === "stock") return <StockPage data={data} setData={setData} display={display} focusId={section.id} onBack={() => { setNav({ level: "overview" }); setSel(null); }} />;
+  if (k.uses === "stock") { const zone = section.parentId ? data.sections.find((z) => z.id === section.parentId) : null;
+    return <StockPage data={data} setData={setData} display={display} focusId={section.id} backLabel={zone ? zone.name : undefined} onBack={() => { setNav(zone ? { level: "section", sectionId: zone.id, bedId: null } : { level: "overview" }); setSel(null); }} />; }
 
   const patchItem = (id, p) => {
     if (usesBeds) patchSection({ beds: (section.beds || []).map((b) => b.id === id ? { ...b, ...p } : b) });
@@ -1708,6 +1950,10 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                 {isHedge && <RotateField rot={p.rot} onChange={(rot) => patchItem(p.id, { rot })} />}
               </div>
             </div>); })()}
+          {moveTargets.length > 0 && (section.plants || []).length > 0 && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
+              <MoveAreaPicker targets={moveTargets} label={`Merge: move all ${(section.plants || []).length} here to`} confirmLabel="Move all" onMove={(toId) => sendPlants((section.plants || []).map((p) => p.id), toId, null)} />
+            </div>)}
         </div>); })()}
 
       {/* tree/berry chooser */}
@@ -1805,7 +2051,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
           <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Tap a bed to select it — then tap Move to drag it, or set its size & grid above. Nothing moves unless you press Move. Tap “Done” to finish." : "Tap one to select it — then tap Move to drag it, or set its shape & size above. Nothing moves unless you press Move. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
         </div>
 
-        {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
+        {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} moveTargets={moveTargets} onMove={(toId) => sendPlants([selPlant.id], toId, selPlant.id)} />}
       </div>
     </div>
   );
@@ -1816,6 +2062,22 @@ function MoveToggle({ on, onToggle }) {
   return <button onClick={onToggle} style={on ? btn(C.harvest) : btnOutline(C.fern)}><Move size={14} /> {on ? "Done moving" : "Move"}</button>;
 }
 const MOVE_HINT = "Drag it on the map to reposition, then tap Done moving.";
+
+// choose another area, then confirm (two taps, so it can't happen by accident)
+function MoveAreaPicker({ targets, onMove, label = "Move to another area", confirmLabel = "Move" }) {
+  const [to, setTo] = useState("");
+  if (!targets || !targets.length) return null;
+  const name = (targets.find((t) => t.id === to) || {}).name;
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
+      <select value={to} onChange={(e) => setTo(e.target.value)} style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit", maxWidth: 190 }}>
+        <option value="">Choose area…</option>
+        {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      {to && <ConfirmButton onConfirm={() => { const id = to; setTo(""); onMove(id); }} style={{ ...btn(C.fern), padding: "6px 11px", fontSize: 12.5 }} armedLabel={`Move to ${name}?`}>{confirmLabel}</ConfirmButton>}
+    </div>);
+}
 
 function ConfirmButton({ onConfirm, style, children, armedLabel = "Tap to confirm" }) {
   const [armed, setArmed] = useState(false);
@@ -1918,7 +2180,7 @@ function PlantQuickLook({ plant, reason, month }) {
 }
 
 // ===================== bed grid (split crops) =====================
-function StockPage({ data, setData, display, focusId, onBack }) {
+function StockPage({ data, setData, display, focusId, onBack, backLabel }) {
   const areas = data.sections.filter((s) => SECTION_KINDS[s.kind].uses === "stock");
   const [expanded, setExpanded] = useState(() => focusId ? { [focusId]: true } : {});
   useEffect(() => { if (focusId) setExpanded((e) => ({ ...e, [focusId]: true })); }, [focusId]);
@@ -1928,7 +2190,7 @@ function StockPage({ data, setData, display, focusId, onBack }) {
 
   return (
     <div>
-      {onBack && <button onClick={onBack} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> Property overview</button>}
+      {onBack && <button onClick={onBack} style={{ ...btnOutline(C.fern), marginBottom: 12 }}><ChevronLeft size={15} /> {backLabel || "Property overview"}</button>}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
         <h2 style={{ ...h2(display), margin: 0, flex: "1 1 auto" }}>Animals</h2>
         {areas.length > 0 && <span style={{ ...chip, background: hexA(C.fern, .14), color: C.fernDk, border: "none" }}>{totalHead} head</span>}
@@ -2723,7 +2985,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
 
 
 // ===================== detail panel ==============================
-function DetailPanel({ item, kind, patch, remove, close, display, extra, marker, planContext, secReal, shade, data }) {
+function DetailPanel({ item, kind, patch, remove, close, display, extra, marker, planContext, secReal, shade, data, moveTargets, onMove }) {
   const lib = useLib();
   const [showAll, setShowAll] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -2957,6 +3219,8 @@ function DetailPanel({ item, kind, patch, remove, close, display, extra, marker,
 
       <textarea value={item.notes || ""} placeholder="Notes…" onChange={(e) => patch({ notes: e.target.value })}
         style={{ width: "100%", marginTop: 10, minHeight: 44, resize: "vertical", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: 8, fontFamily: "inherit", fontSize: 13, color: C.ink, background: C.panel2 }} />
+
+      {marker && moveTargets && moveTargets.length > 0 && <div style={{ marginTop: 12 }}><MoveAreaPicker targets={moveTargets} onMove={onMove} /></div>}
 
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         {isPlanned ? (
