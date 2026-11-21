@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Map, Sprout, RefreshCw, CalendarDays, Plus, Trash2, X, Upload, Leaf, Apple,
   TreeDeciduous, Sun, AlertTriangle, Check, Info, Ruler, ChevronLeft, Grid3x3,
-  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bird
+  Home, Scissors, Droplets, Clock, Cherry, ZoomIn, ZoomOut, Compass as Compass2, CloudSun, Settings, Pencil, ArrowRight, Search, FileText, Printer, RotateCw, Undo2, Fence, Egg, Bird, Move
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ *
@@ -345,7 +345,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 140";
+const APP_BUILD = "2026-06-25 · build 141";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -657,7 +657,7 @@ function NorthControl({ north, setNorth, hemi = "south" }) {
   );
 }
 
-function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, setZoom, north, hemi, onBg, uploading, placeholder, crop, gray, editMode = false, children }) {
+function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, setZoom, north, hemi, onBg, uploading, placeholder, crop, gray, children }) {
   // crop = { bg, ar, region:{x,y,w,h} } shows a sub-rectangle of a parent image
   const scrollRef = useRef(null);
   usePinchZoom(scrollRef, zoom, setZoom);
@@ -677,7 +677,7 @@ function MapShell({ mapRef, drag, bg, bgAR, defaultAR = "16 / 10", zoom = 1, set
     <div style={{ position: "relative", width: "100%" }}>
       <div ref={scrollRef} style={{ position: "relative", width: "100%", maxHeight: "68vh", overflow: zoom > 1 ? "auto" : "hidden", border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel }}>
         <div ref={mapRef} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerUp} onPointerLeave={drag.onPointerUp} onClick={onBg}
-          style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: editMode ? "none" : "auto" }}>
+          style={{ position: "relative", width: `${zoom * 100}%`, aspectRatio: aspect, touchAction: "auto" }}>
           {hasImg && <div style={{ position: "absolute", inset: 0, background: bgStyle, filter: gray ? "grayscale(1) contrast(.9) brightness(1.08)" : "none", pointerEvents: "none" }} />}
           {placeholder}
           {uploading && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)", color: "#fff" }}>Adding image…</div>}
@@ -1230,6 +1230,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   const [editMode, setEditMode] = useState(false);
   const [editSel, setEditSel] = useState(null);
   const [treeSel, setTreeSel] = useState(null);
+  const [moveId, setMoveId] = useState(null); // the one selected area/tree that is currently unlocked for dragging
   const [treePick, setTreePick] = useState(false);
   const [treeQ, setTreeQ] = useState("");
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
@@ -1268,7 +1269,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setEditMode(!editMode)} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
+        <button onClick={() => { setEditMode(!editMode); setMoveId(null); }} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
         <button onClick={() => setShowSettings(!showSettings)} style={btnOutline(C.muted)}><Settings size={14} /> Property settings</button>
         {editMode && Object.entries(SECTION_KINDS).map(([k, v]) => (
           <button key={k} onClick={() => addSection(k)} style={btn(v.color)}><Plus size={14} /> {v.label}</button>
@@ -1325,9 +1326,11 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             <TreeDeciduous size={15} color={C.soil} />
             <strong style={{ fontSize: 13.5, color: C.fernDk, flex: "1 1 auto" }}>{t.plant}</strong>
+            <MoveToggle on={moveId === t.id} onToggle={() => setMoveId(moveId === t.id ? null : t.id)} />
             <button onClick={() => { setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }} style={btnOutline(C.fern)}>Open details</button>
             <ConfirmButton onConfirm={() => removeTree(t.id)} style={btnOutline(C.beet)} armedLabel="Delete tree?"><Trash2 size={14} /></ConfirmButton>
           </div>
+          {moveId === t.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: C.muted }}>
             <span>Canopy {m != null ? `${m} m` : `${Math.round(t.dia ?? 12)}%`}</span>
             {m != null
@@ -1345,8 +1348,10 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{s.name}</span>
                 <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
-                <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
+                <MoveToggle on={moveId === s.id} onToggle={() => setMoveId(moveId === s.id ? null : s.id)} />
+                <ConfirmButton onConfirm={() => { delSection(s.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={note !== "empty" ? `Delete area + ${note}?` : "Delete area?"}><Trash2 size={14} /></ConfirmButton>
               </div>
+              {moveId === s.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
               {data.dimM?.w ? <SizeFields label="" dim={realOf(s.w, s.h, data.dimM)} onChange={(real) => {
                   const oldSectionReal = realOf(s.w, s.h, data.dimM);
                   const b = boxFromReal(real, data.dimM);
@@ -1368,7 +1373,7 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
             </div>}
         </div>); })()}
 
-      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} setZoom={setZoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false} editMode={editMode}
+      <MapShell mapRef={wrapRef} drag={drag} bg={data.bg} bgAR={data.bgAR} defaultAR="16 / 10" zoom={zoom} setZoom={setZoom} north={data.north ?? 0} hemi={(data.place || DEFAULT_PLACE).hemisphere} uploading={uploading} gray={data.grayBg !== false}
         placeholder={!data.bg && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
             <div style={{ background: "rgba(245,243,234,.94)", border: `1px solid ${C.line}`, borderRadius: 12, padding: "18px 20px", maxWidth: 380, boxShadow: "0 4px 16px rgba(0,0,0,.18)", display: "flex", flexDirection: "column", alignItems: "center", color: C.ink }}>
@@ -1380,9 +1385,9 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
           const count = sectionCountLabel(s).text;
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
-            <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
-              onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(s.id); setTreeSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
-              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
+            <div key={s.id} onPointerDown={editMode && moveId === s.id ? (e) => drag.onPointerDown(e, s, "move") : undefined}
+              onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== s.id) setMoveId(null); setEditSel(s.id); setTreeSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+              style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode && moveId === s.id ? "move" : "pointer", touchAction: editMode && moveId === s.id ? "none" : "auto", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && moveId === s.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               </div>
@@ -1391,17 +1396,17 @@ function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, displa
               </div>
             </div>
           ); })}
-        {looseTrees.map((t) => { const isBush = t.icon === "bush" || t.icon === "cane"; const dia = t.dia ?? (isBush ? 2.5 : 4); const on = editMode && treeSel === t.id;
+        {looseTrees.map((t) => { const isBush = t.icon === "bush" || t.icon === "cane"; const dia = t.dia ?? (isBush ? 2.5 : 4); const on = editMode && treeSel === t.id; const armed = editMode && moveId === t.id;
           const canopy = lib.color(t.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
           return (
-            <div key={t.id} onPointerDown={editMode ? (e) => dragTrees.onPointerDown(e, t, "move") : undefined}
-              onClick={editMode ? (e) => { e.stopPropagation(); if (dragTrees.moved()) return; setTreeSel(t.id); setEditSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }}
-              style={{ position: "absolute", left: `${t.x}%`, top: `${t.y}%`, width: `${dia}%`, minWidth: 18, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", zIndex: 3 }}>
-              <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF", .28)}, ${canopy} 62%)`, border: `2px solid ${on ? "#fff" : ring}`, boxShadow: on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
+            <div key={t.id} onPointerDown={armed ? (e) => dragTrees.onPointerDown(e, t, "move") : undefined}
+              onClick={editMode ? (e) => { e.stopPropagation(); if (dragTrees.moved()) return; if (treeSel !== t.id) setMoveId(null); setTreeSel(t.id); setEditSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }}
+              style={{ position: "absolute", left: `${t.x}%`, top: `${t.y}%`, width: `${dia}%`, minWidth: 18, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", zIndex: 3 }}>
+              <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF", .28)}, ${canopy} 62%)`, border: `2px solid ${armed ? C.harvest : on ? "#fff" : ring}`, boxShadow: armed ? `0 0 0 3px ${hexA(C.harvest, .55)}` : on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
               <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 9.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{t.plant}</div>
             </div>); })}
       </MapShell>
-      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · tap an area or tree to set its size above. Tap “Done editing” when finished." : "Tap a section to go inside it, or tap a tree for its details. Tap “Edit layout” to move or add areas and trees."}</p>
+      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Tap an area or tree to select it — then tap Move to drag it, or set its size above. Nothing moves unless you press Move. Tap “Done editing” when finished." : "Tap a section to go inside it, or tap a tree for its details. Tap “Edit layout” to move or add areas and trees."}</p>
     </div>
   );
 }
@@ -1423,6 +1428,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [hNote, setHNote] = useState("");
   const [hSel, setHSel] = useState({}); // planting key -> false means unticked
   const [editSel, setEditSel] = useState(null);
+  const [moveId, setMoveId] = useState(null); // the one selected bed/plant currently unlocked for dragging
   const zoom = section.zoom ?? 1;
   const setZoom = (v) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === section.id ? { ...s, zoom: typeof v === "function" ? v(s.zoom ?? 1) : v } : s) }));
   const k = SECTION_KINDS[section.kind];
@@ -1465,7 +1471,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
       </div>
       {sectionReal && <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}><Ruler size={13} color={C.fern} /> This area is <strong style={{ color: C.fernDk }}>{sectionReal.w}×{sectionReal.l}m</strong> — set on the property overview. Beds and trees below size against it.</div>}
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => { setEditMode(!editMode); setPicker(false); }} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
+        <button onClick={() => { setEditMode(!editMode); setPicker(false); setMoveId(null); }} style={editMode ? btn(C.fern) : btnOutline(C.fern)}>{editMode ? <><Check size={14} /> Done editing</> : <><Pencil size={14} /> Edit layout</>}</button>
         <button onClick={() => setLogH(!logH)} style={logH ? btn(C.harvest) : btnOutline(C.harvest)}><Cherry size={14} /> Log harvest</button>
         {editMode && <>
           {usesBeds ? <button onClick={addBed} style={btn(C.fern)}><Plus size={14} /> Add bed</button>
@@ -1550,8 +1556,10 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{b.name}</span>
                 <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>
-                <ConfirmButton onConfirm={() => { patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) }); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
+                <MoveToggle on={moveId === b.id} onToggle={() => setMoveId(moveId === b.id ? null : b.id)} />
+                <ConfirmButton onConfirm={() => { patchSection({ beds: (section.beds || []).filter((x) => x.id !== b.id) }); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={cnt ? `Delete bed + ${note}?` : "Delete bed?"}><Trash2 size={14} /></ConfirmButton>
               </div>
+              {moveId === b.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
               {sectionReal ? <SizeFields label="" dim={realOf(b.w, b.h, sectionReal)} onChange={(real) => { const bx = boxFromReal(real, sectionReal); patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, ...bx } : x) }); }} />
                 : <PctSizeFields w={b.w} h={b.h} onChange={({ w, h }) => patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, w: clamp(w, 2, 100), h: clamp(h, 2, 100) } : x) })} />}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -1578,8 +1586,10 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, color: C.fernDk, fontWeight: 600, flex: "1 1 auto" }}>{p.plant}{dup.length > 1 ? ` #${idx + 1}` : ""}</span>
-                <ConfirmButton onConfirm={() => { removePlant(p.id); setEditSel(null); }} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
+                <MoveToggle on={moveId === p.id} onToggle={() => setMoveId(moveId === p.id ? null : p.id)} />
+                <ConfirmButton onConfirm={() => { removePlant(p.id); setEditSel(null); setMoveId(null); }} style={btnOutline(C.beet)} armedLabel={`Delete ${p.plant}?`}><Trash2 size={14} /></ConfirmButton>
               </div>
+              {moveId === p.id && <p style={{ fontSize: 11.5, color: C.harvest, fontWeight: 600, margin: "0 0 8px" }}>{MOVE_HINT}</p>}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <select value={isHedge ? "hedge" : (p.icon || "tree")} onChange={(e) => { const v = e.target.value; patchItem(p.id, v === "hedge" ? { shape: "hedge", w: p.w ?? 30, h: p.h ?? 8 } : { shape: null, icon: v }); }}
                   style={{ border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 7px", fontSize: 12.5, color: C.ink, background: C.panel2, fontFamily: "inherit" }}>
@@ -1635,7 +1645,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 320px", minWidth: 280, maxWidth: mapW }}>
           <div style={{ marginBottom: 8 }}><ZoomBar zoom={zoom} setZoom={setZoom} /></div>
-          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false} editMode={editMode}
+          <MapShell mapRef={wrapRef} drag={drag} bg={section.bg} bgAR={section.bgAR} defaultAR="4 / 3" zoom={zoom} setZoom={setZoom} north={north} hemi={hemi} onBg={() => setSel(null)} gray={data.grayBg !== false}
             crop={(!section.bg && data.bg) ? { bg: data.bg, ar: data.bgAR, region: { x: section.x, y: section.y, w: section.w, h: section.h } } : null}
             placeholder={!section.bg && (usesBeds ? (section.beds || []).length === 0 : (section.plants || []).length === 0) && (
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 20 }}>
@@ -1658,9 +1668,9 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const dim = dimLabel(realOf(b.w, b.h, sectionReal));
               return (
                 <div key={b.id}
-                  onPointerDown={editMode ? (e) => drag.onPointerDown(e, b, "move") : undefined}
-                  onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
+                  onPointerDown={editMode && moveId === b.id ? (e) => drag.onPointerDown(e, b, "move") : undefined}
+                  onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== b.id) setMoveId(null); setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode && moveId === b.id ? "move" : "pointer", touchAction: editMode && moveId === b.id ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && moveId === b.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>{anyPlanned ? <span style={{ fontSize: 10 }}>⏳</span> : null}</div>
                   {!isPhone && <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n];
@@ -1680,13 +1690,14 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
 
             {!usesBeds && (section.plants || []).filter((p) => visibleAt(p, viewDate)).map((p) => { const on = editMode ? editSel === p.id : selPlant?.id === p.id;
               const canopy = lib.color(p.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
-              const select = editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(p.id); } : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
-              const down = editMode ? (e) => drag.onPointerDown(e, p, "move") : undefined;
+              const armed = editMode && moveId === p.id;
+              const select = editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== p.id) setMoveId(null); setEditSel(p.id); } : (e) => { e.stopPropagation(); setSel({ kind: "marker", sectionId: section.id, id: p.id }); };
+              const down = armed ? (e) => drag.onPointerDown(e, p, "move") : undefined;
               if (p.shape === "hedge") {
                 const w = p.w ?? 30, h = p.h ?? 8;
                 return (
                   <div key={p.id} onPointerDown={down} onClick={select}
-                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
+                    style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${w}%`, height: `${h}%`, transform: p.rot ? `rotate(${p.rot}deg)` : undefined, cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto", background: hexA(canopy, .55), border: `2px ${editMode ? "dashed" : "solid"} ${canopy}`, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", overflow: "hidden", boxShadow: armed ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : on ? "0 0 0 2px #fff" : "0 1px 3px rgba(0,0,0,.3)" }}>
                     <span style={{ fontSize: 10.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 8px" }}>{p.plant} hedge</span>
                   </div>);
               }
@@ -1694,12 +1705,12 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const dia = p.dia ?? (isBush ? 8 : 12);
               return (
                 <div key={p.id} onPointerDown={down} onClick={select}
-                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto" }}>
-                  <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${on ? "#fff" : ring}`, boxShadow: on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
+                  style={{ position: "absolute", left: `${p.x}%`, top: `${p.y}%`, width: `${dia}%`, transform: "translate(-50%,-50%)", cursor: armed ? "move" : "pointer", touchAction: armed ? "none" : "auto" }}>
+                  <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF",.28)}, ${canopy} 62%)`, border: `2px solid ${armed ? C.harvest : on ? "#fff" : ring}`, boxShadow: armed ? `0 0 0 3px ${hexA(C.harvest, .55)}` : on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
           </MapShell>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · tap a bed to set its size & grid above. Tap “Done” to finish." : "Drag to move · tap one to set its shape & size above. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Tap a bed to select it — then tap Move to drag it, or set its size & grid above. Nothing moves unless you press Move. Tap “Done” to finish." : "Tap one to select it — then tap Move to drag it, or set its shape & size above. Nothing moves unless you press Move. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
         </div>
 
         {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
@@ -1707,6 +1718,12 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
     </div>
   );
 }
+
+// edit mode only selects things; to reposition the selected item you press Move, and only that item can then be dragged
+function MoveToggle({ on, onToggle }) {
+  return <button onClick={onToggle} style={on ? btn(C.harvest) : btnOutline(C.fern)}><Move size={14} /> {on ? "Done moving" : "Move"}</button>;
+}
+const MOVE_HINT = "Drag it on the map to reposition, then tap Done moving.";
 
 function ConfirmButton({ onConfirm, style, children, armedLabel = "Tap to confirm" }) {
   const [armed, setArmed] = useState(false);
