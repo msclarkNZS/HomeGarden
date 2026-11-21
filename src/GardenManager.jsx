@@ -420,6 +420,18 @@ function nextTreeSpot(plants, dia = 12) {
   return { x: 50, y: 50 };
 }
 
+// where to drop a new bed so it doesn't land on top of the others: the free spot nearest the middle (positions/sizes are % of the area)
+function nextBedSpot(beds, w, h) {
+  const hit = (x, y) => (beds || []).some((b) => x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y);
+  let best = null;
+  for (let y = 3; y <= 97 - h; y += 3) for (let x = 3; x <= 97 - w; x += 3) {
+    if (hit(x, y)) continue;
+    const d = Math.hypot(x + w / 2 - 50, y + h / 2 - 50);
+    if (!best || d < best.d) best = { x, y, d };
+  }
+  return best ? { x: best.x, y: best.y } : { x: Math.max(0, 50 - w / 2), y: Math.max(0, 50 - h / 2) };
+}
+
 // --- moving trees between areas (for merging areas) ---
 const plantAreas = (sections) => sections.filter((s) => SECTION_KINDS[s.kind]?.uses === "plants");
 // move plants from one plant area to another, keeping each at the same spot on the property and the same real size
@@ -456,7 +468,7 @@ function sectionCountLabel(s, all) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 148";
+const APP_BUILD = "2026-06-25 · build 149";
 const BUILD_NUM = Number((APP_BUILD.match(/build (\d+)/) || [])[1]) || 0;
 // SCHEMA_VERSION: raise this whenever saved data changes shape in a way an OLDER copy of the app would mangle (a new kind of area,
 // a new nesting rule…). Every save is stamped with it; a copy of the app that meets data from a newer layout refuses to save over it.
@@ -1184,7 +1196,7 @@ export default function GardenManager() {
   }, []);
   useEffect(() => {
     const st = document.createElement("style");
-    st.textContent = "@media print { .report-toggles { display: none !important; } } @keyframes gmPulse { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(2); opacity: 0; } }";
+    st.textContent = "@media print { .report-toggles { display: none !important; } } @keyframes gmPulse { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(2); opacity: 0; } } @keyframes gmGlow { 0% { box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(194,119,46,.95); } 100% { box-shadow: 0 0 0 3px #fff, 0 0 0 20px rgba(194,119,46,0); } }";
     document.head.appendChild(st); return () => document.head.removeChild(st);
   }, []);
   useEffect(() => {
@@ -1417,7 +1429,7 @@ const STAGE = {
 function cropStage(cell, meta, viewDate) {
   if (!cell.planted) return "growing";
   const planted = new Date(cell.planted);
-  if (planted > viewDate) return "planned";
+  if (dayStr(cell.planted) > dayStr(viewDate)) return "planned"; // by day, so something planted today isn't "planned" until the afternoon
   if (cell.removed && dayStr(cell.removed) <= dayStr(viewDate)) return "done";
   if (meta?.hmode === "months") {
     const vrt = (meta.varieties || []).find((v) => v.name === cell.variety);
@@ -1917,6 +1929,10 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   const [picker, setPicker] = useState(false);
   const [hover, setHover] = useState(null);
   const markerEls = useRef({}); // plant id -> its element on the map, so the list below can scroll to it
+  const bedEls = useRef({});    // bed id -> its element on the map
+  const [hlBed, setHlBed] = useState(null); // the bed just picked from the list (glows on the map for a few seconds)
+  const hlTimer = useRef(null);
+  useEffect(() => () => clearTimeout(hlTimer.current), []);
   const [pickQ, setPickQ] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [logH, setLogH] = useState(false);
@@ -1952,7 +1968,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
   };
   const drag = useDrag(wrapRef, patchItem);
 
-  const addBed = () => { const b = { id: uid(), name: `Bed ${(section.beds || []).length + 1}`, kind: "veg", x: 35, y: 38, w: 28, h: 24, cols: 4, rows: 3, cells: [], notes: "" };
+  const addBed = () => { const spot = nextBedSpot(section.beds, 28, 24); const b = { id: uid(), name: `Bed ${(section.beds || []).length + 1}`, kind: "veg", x: spot.x, y: spot.y, w: 28, h: 24, cols: 4, rows: 3, cells: [], notes: "" };
     patchSection({ beds: [...(section.beds || []), b] }); };
 
   const addPlant = (item) => { const isBush = item.icon === "bush" || item.icon === "cane"; const dia0 = isBush ? 8 : 12; const spot = nextTreeSpot(section.plants, dia0); const p = { id: uid(), x: spot.x, y: spot.y, plant: item.name, icon: item.icon || "tree", dia: dia0, planted: todayISO(), ferts: [], notes: "" };
@@ -1963,6 +1979,13 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
     if (editMode) { if (editSel !== p.id) setMoveId(null); setEditSel(p.id); } else setSel({ kind: "marker", sectionId: section.id, id: p.id });
     setTimeout(() => { const el = markerEls.current[p.id]; if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); }, 80);
   };
+  // pick a bed from the list: make it glow on the map and scroll to it (in edit mode it is also selected for editing)
+  const focusBed = (b) => {
+    if (editMode) { if (editSel !== b.id) setMoveId(null); setEditSel(b.id); }
+    setHlBed(b.id); clearTimeout(hlTimer.current); hlTimer.current = setTimeout(() => setHlBed(null), 6000);
+    setTimeout(() => { const el = bedEls.current[b.id]; if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); }, 80);
+  };
+  const bedToCentre = (b) => { patchSection({ beds: (section.beds || []).map((x) => x.id === b.id ? { ...x, x: clamp(50 - x.w / 2, 0, 100 - x.w), y: clamp(50 - x.h / 2, 0, 100 - x.h) } : x) }); focusBed(b); };
   // bring a plant to the middle of the map (a hedge is placed by its corner, so offset by half its size)
   const toCentre = (p) => { patchItem(p.id, p.shape === "hedge" ? { x: 50 - (p.w ?? 30) / 2, y: 50 - (p.h ?? 8) / 2 } : { x: 50, y: 50 }); focusPlant(p); };
 
@@ -2175,11 +2198,12 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
               const fillLabel = pct <= 0 ? "empty" : pct >= 100 ? "full" : `${pct}% full`;
               const anyPlanned = bedPlantings(b).map(plantingAsCell).some((c) => dayStr(c.planted) > dayStr(new Date()) && visibleAt(c, viewDate));
               const dim = dimLabel(realOf(b.w, b.h, sectionReal));
+              const hl = hlBed === b.id;
               return (
-                <div key={b.id}
+                <div key={b.id} ref={(el) => { bedEls.current[b.id] = el; }} className={hl ? "gm-found-bed" : undefined}
                   onPointerDown={editMode && moveId === b.id ? (e) => drag.onPointerDown(e, b, "move") : undefined}
                   onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; if (editSel !== b.id) setMoveId(null); setEditSel(b.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }}
-                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, boxSizing: "border-box", transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode && moveId === b.id ? "move" : "pointer", touchAction: editMode && moveId === b.id ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && moveId === b.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : undefined }}>
+                  style={{ position: "absolute", left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%`, boxSizing: "border-box", transform: b.rot ? `rotate(${b.rot}deg)` : undefined, cursor: editMode && moveId === b.id ? "move" : "pointer", touchAction: editMode && moveId === b.id ? "none" : "auto", background: hexA(col, .4), border: `2px ${editMode ? "dashed" : "solid"} ${col}`, borderRadius: 7, padding: 5, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, boxShadow: editMode && moveId === b.id ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : editMode && editSel === b.id ? "0 0 0 3px #fff, 0 0 0 5px " + col : hl ? `0 0 0 3px #fff, 0 0 0 6px ${C.harvest}` : undefined, animation: hl ? "gmGlow 1.3s ease-out 3" : undefined }}>
                   <div style={{ fontSize: 11.5, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.6)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}><Grid3x3 size={11} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>{anyPlanned ? <span style={{ fontSize: 10 }}>⏳</span> : null}</div>
                   {!isPhone && <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
                     {names.length ? names.map((n) => { const pl = counts[n];
@@ -2242,6 +2266,53 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                         <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: "1 1 110px", minWidth: 0 }}>{p.plant}{numberOf(p)}{p.shape === "hedge" ? " (hedge)" : ""}</span>
                         <span style={{ fontSize: 11.5, color: shown ? C.muted : C.harvest }}>{!shown ? (future ? `not planted until ${fmtDate(p.planted)}` : "not on the map for this date") : p.planted ? `planted ${fmtDate(p.planted)}` : ""}</span>
                         <button onClick={(e) => { e.stopPropagation(); toCentre(p); }} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }}><Crosshair size={12} /> To centre</button>
+                      </div>);
+                  })}
+                </div>
+              </div>);
+          })()}
+
+          {usesBeds && (section.beds || []).length > 0 && (() => {
+            const beds = (section.beds || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: "base" }));
+            const infoOf = (b) => {
+              const real = realOf(b.w, b.h, sectionReal);
+              const all = bedPlantings(b).map(plantingAsCell);
+              const live = all.filter((c) => visibleAt(c, viewDate));
+              const counts = {}; live.forEach((c) => { counts[c.plant] = (counts[c.plant] || 0) + 1; });
+              const fg = bedFineGrid(b, real); const total = Math.max(1, fg.gw * fg.gh);
+              const occ = Object.keys(squareOwners(bedPlantings(b), fg, viewDate)).length;
+              const fam = bedFamily(b, viewDate);
+              return { real, total, occ, pct: Math.round(occ / total * 100), names: Object.keys(counts), dot: fam ? FAMILIES[fam].color : C.fern,
+                ready: live.filter((c) => cropStage(c, lib.vegByName(c.plant), viewDate) === "ready").length,
+                planned: all.filter((c) => dayStr(c.planted) > todayISO() && !c.removed).length }; // everything lined up for a future date, whatever date is being viewed
+            };
+            const infos = beds.map((b) => [b, infoOf(b)]);
+            const totOcc = infos.reduce((n, [, i]) => n + i.occ, 0), totSq = infos.reduce((n, [, i]) => n + i.total, 0);
+            const totM2 = Math.round(infos.reduce((n, [, i]) => n + (i.real ? i.real.w * i.real.l : 0), 0));
+            return (
+              <div style={{ ...card, padding: 12, marginTop: 10 }}>
+                <strong style={{ fontSize: 13.5, color: C.fernDk }}>Beds in this area · {beds.length}</strong>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{totM2 > 0 ? `${totM2} m² of beds · ` : ""}{Math.round(totOcc / totSq * 100)}% planted overall</div>
+                <p style={{ fontSize: 11.5, color: C.muted, margin: "4px 0 6px", lineHeight: 1.5 }}>Tap a bed to find it on the map. <strong>Open</strong> takes you inside it; <strong>To centre</strong> brings it to the middle if it's hidden under another.</p>
+                <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                  {infos.map(([b, i]) => {
+                    const on = hlBed === b.id || (editMode && editSel === b.id);
+                    const fill = i.pct <= 0 ? "empty" : i.pct >= 100 ? "full" : `${i.pct}% full`;
+                    const crops = i.names.length ? i.names.slice(0, 4).join(", ") + (i.names.length > 4 ? ` +${i.names.length - 4} more` : "") : "nothing planted";
+                    return (
+                      <div key={b.id} onClick={() => focusBed(b)} style={{ padding: "8px 6px", borderTop: `1px solid ${C.line}`, cursor: "pointer", borderRadius: 6, background: on ? hexA(C.harvest, .14) : "transparent" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 11, height: 11, borderRadius: 3, background: i.dot, flexShrink: 0, boxShadow: "0 0 0 1px rgba(0,0,0,.25)" }} />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: C.ink, flex: 1, minWidth: 0 }}>{b.name}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: i.pct > 0 ? C.fern : C.muted }}>{fill}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: C.muted, margin: "2px 0 0 19px", lineHeight: 1.4 }}>{i.real ? `${dimLabel(i.real)} · ` : ""}{crops}</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "6px 0 0 19px" }}>
+                          {i.ready > 0 && <span style={{ ...chip, fontSize: 11, padding: "2px 8px", background: hexA(C.harvest, .18), color: C.ink, border: `1px solid ${hexA(C.harvest, .55)}` }}>🧺 {i.ready} ready</span>}
+                          {i.planned > 0 && <span style={{ ...chip, fontSize: 11, padding: "2px 8px", background: hexA(C.sage, .22), color: C.ink, border: "none" }}>⏳ {i.planned} planned</span>}
+                          <button onClick={(e) => { e.stopPropagation(); setNav({ level: "section", sectionId: section.id, bedId: b.id }); }} style={{ ...btn(C.fern), padding: "4px 10px", fontSize: 12 }}><ArrowRight size={12} /> Open</button>
+                          <button onClick={(e) => { e.stopPropagation(); bedToCentre(b); }} style={{ ...btnOutline(C.fern), padding: "4px 9px", fontSize: 12 }}><Crosshair size={12} /> To centre</button>
+                        </div>
                       </div>);
                   })}
                 </div>
