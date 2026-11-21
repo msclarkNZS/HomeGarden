@@ -345,7 +345,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 138";
+const APP_BUILD = "2026-06-25 · build 139";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -354,6 +354,9 @@ const fmtDate = (iso) => { if (!iso) return "—"; const d = new Date(iso); retu
 const addDays = (iso, n) => { const d = new Date(iso); d.setDate(d.getDate() + n); return isoOf(d); };
 const dayKey = (d) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// name search that ignores case and macrons/accents, so "kumara" finds "Kūmara" (and vice versa)
+const foldText = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const nameMatches = (name, query) => { const q = foldText(query).trim(); return !q || foldText(name).includes(q); };
 
 /* --- storage layer ---------------------------------------------------------
  * In the in-chat preview an injected window.storage is used. As a standalone
@@ -1546,7 +1549,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
             {pickQ && <button onClick={() => setPickQ("")} style={iconBtn}><X size={13} /></button>}
           </span>
           <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 7, maxHeight: 220, overflowY: "auto" }}>
-            {pickList.filter((item) => !pickQ.trim() || item.name.toLowerCase().includes(pickQ.trim().toLowerCase())).map((item) => (
+            {pickList.filter((item) => nameMatches(item.name, pickQ)).map((item) => (
               <button key={item.name} onClick={() => addPlant(item)} onMouseEnter={() => setHover(item)}
                 style={{ ...chip, cursor: "pointer", background: "#fff", border: `1px solid ${hexA(k.color, .6)}`, color: C.ink, padding: "7px 12px" }}>
                 {section.kind === "berry" ? <Cherry size={12} color={C.beet} style={{ marginRight: 4, verticalAlign: -1 }} /> : <TreeDeciduous size={12} color={C.soil} style={{ marginRight: 4, verticalAlign: -1 }} />}
@@ -2431,7 +2434,7 @@ function BedGrid({ data, setData, section, bed, setNav, sel, setSel, viewDate, s
                       {palQ && <button onClick={() => setPalQ("")} style={iconBtn}><X size={13} /></button>}
                     </span>
                     <div onMouseLeave={() => setHover(null)} style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 150, overflowY: "auto" }}>
-                      {plantsForSection(lib, section.kind).filter((p) => !palQ.trim() || p.name.toLowerCase().includes(palQ.trim().toLowerCase())).map((p) => { const sug = FAMILIES[p.fam]?.group === suggestGroup;
+                      {plantsForSection(lib, section.kind).filter((p) => nameMatches(p.name, palQ)).map((p) => { const sug = FAMILIES[p.fam]?.group === suggestGroup;
                         return (<button key={p.name} onClick={() => choose(p)} onMouseEnter={() => setHover(p)}
                           style={{ ...chip, cursor: "pointer", background: sug ? hexA(C.fern, .12) : "#fff", color: C.ink, border: `${sug ? 2 : 1}px solid ${sug ? C.fern : hexA(p.color, .6)}`, fontWeight: sug ? 600 : 500 }}>
                           {sug && <Sprout size={10} color={C.fern} style={{ marginRight: 3, verticalAlign: -1 }} />}{p.name}</button>); })}
@@ -3327,7 +3330,7 @@ function PlantsView({ data, setData, month, display }) {
   const [q, setQ] = useState("");
   const [fMonth, setFMonth] = useState(0); // 0 = any
   const [fFam, setFFam] = useState("any");
-  const match = (p) => !q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase());
+  const match = (p) => nameMatches(p.name, q);
   const vegList = lib.veg.filter((v) => match(v) && (fMonth === 0 || (v.sow || []).includes(fMonth)) && (fFam === "any" || v.fam === fFam));
   const fruitList = lib.fruit.filter(match);
   const berryList = lib.berry.filter(match);
