@@ -345,7 +345,7 @@ function sectionCountLabel(s) {
 // ===================== persistence & helpers ======================
 // Bump APP_BUILD on every deploy — it's shown in the header & settings so you
 // can confirm the live site has refreshed to the latest version.
-const APP_BUILD = "2026-06-25 · build 139";
+const APP_BUILD = "2026-06-25 · build 140";
 const KEY = "glenbrook-garden:v2";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1217,10 +1217,11 @@ function PropertyTab({ data, setData, nav, setNav, sel, setSel, viewDate, setVie
     }
     return <SectionView {...{ data, setData, section, nav, setNav, sel, setSel, viewDate, setViewDate, display, month }} />;
   }
-  return <Overview {...{ data, setData, setNav, viewDate, setViewDate, display }} />;
+  return <Overview {...{ data, setData, setNav, setSel, viewDate, setViewDate, display }} />;
 }
 
-function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
+function Overview({ data, setData, setNav, setSel, viewDate, setViewDate, display }) {
+  const lib = useLib();
   const wrapRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const zoom = data.zoom ?? 1;
@@ -1228,9 +1229,32 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editSel, setEditSel] = useState(null);
+  const [treeSel, setTreeSel] = useState(null);
+  const [treePick, setTreePick] = useState(false);
+  const [treeQ, setTreeQ] = useState("");
   const patchSection = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.id === id ? { ...s, ...p } : s) }));
   const delSection = (id) => setData((d) => ({ ...d, sections: d.sections.filter((s) => s.id !== id) }));
   const drag = useDrag(wrapRef, patchSection);
+
+  // Trees placed around the property itself (not inside a garden or orchard) live in a hidden "loose" area that covers the
+  // whole property — so harvest logs, feeding/spray logs, jobs and reports treat them like any other tree.
+  const loose = data.sections.find((s) => s.loose);
+  const looseTrees = loose?.plants || [];
+  const patchTree = (id, p) => setData((d) => ({ ...d, sections: d.sections.map((s) => s.loose ? { ...s, plants: (s.plants || []).map((t) => t.id === id ? { ...t, ...p } : t) } : s) }));
+  const dragTrees = useDrag(wrapRef, patchTree);
+  const addTree = (item) => {
+    const isBush = item.icon === "bush" || item.icon === "cane";
+    const dia = data.dimM?.w ? clamp((isBush ? 1.5 : 4) / data.dimM.w * 100, 2, 80) : (isBush ? 2.5 : 4);
+    const t = { id: uid(), x: 50, y: 50, plant: item.name, icon: item.icon || "tree", dia, planted: todayISO(), ferts: [], notes: "" };
+    setData((d) => {
+      if (d.sections.some((s) => s.loose)) return { ...d, sections: d.sections.map((s) => s.loose ? { ...s, plants: [...(s.plants || []), t] } : s) };
+      const area = { id: uid(), name: "Trees around the property", kind: "orchard", loose: true, x: 0, y: 0, w: 100, h: 100, bg: null, beds: [], plants: [t], mobs: [] };
+      return { ...d, sections: [...d.sections, area] };
+    });
+    setTreePick(false); setTreeQ(""); setEditSel(null); setTreeSel(t.id);
+  };
+  const removeTree = (id) => { setData((d) => ({ ...d, sections: d.sections.map((s) => s.loose ? { ...s, plants: (s.plants || []).filter((t) => t.id !== id) } : s) })); setTreeSel(null); };
+  const selTree = looseTrees.find((t) => t.id === treeSel) || null;
 
   const onUpload = async (e) => { const f = e.target.files?.[0]; if (!f) return; setUploading(true);
     try { const { url, ar } = await resizeImage(f); setData((d) => ({ ...d, bg: url, bgAR: ar })); } catch { alert("Couldn't read that image."); } setUploading(false); };
@@ -1249,7 +1273,26 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
         {editMode && Object.entries(SECTION_KINDS).map(([k, v]) => (
           <button key={k} onClick={() => addSection(k)} style={btn(v.color)}><Plus size={14} /> {v.label}</button>
         ))}
+        {editMode && <button onClick={() => setTreePick(!treePick)} style={btn(C.soil)}><TreeDeciduous size={14} /> Tree</button>}
       </div>
+      {editMode && treePick && (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <strong style={{ fontSize: 13.5, color: C.fernDk }}>Add a tree anywhere on the property</strong>
+            <button onClick={() => setTreePick(false)} style={iconBtn}><X size={16} /></button>
+          </div>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "0 8px", background: "#fff", marginBottom: 8 }}>
+            <Search size={13} color={C.muted} />
+            <input value={treeQ} onChange={(e) => setTreeQ(e.target.value)} placeholder="Search trees…" style={{ border: "none", background: "transparent", outline: "none", padding: "7px 0", fontSize: 13, color: C.ink, fontFamily: "inherit", width: "100%" }} />
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, maxHeight: 180, overflowY: "auto" }}>
+            {plantsForSection(lib, "orchard").filter((item) => nameMatches(item.name, treeQ)).map((item) => (
+              <button key={item.name} onClick={() => addTree(item)} style={{ ...chip, cursor: "pointer", background: "#fff", border: `1px solid ${hexA(C.soil, .6)}`, color: C.ink, padding: "7px 12px" }}>
+                <TreeDeciduous size={12} color={C.soil} style={{ marginRight: 4, verticalAlign: -1 }} />{item.name}
+              </button>))}
+          </div>
+          <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>It drops in the middle of the map — drag it into place. Tap it to set its canopy size.</p>
+        </div>)}
       <div style={{ marginBottom: 8 }}>
         {showSettings && (
           <div style={{ ...card, padding: 12, marginTop: 4 }}>
@@ -1259,7 +1302,10 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
               const old = d.dimM;
               if (!old || !old.w || !old.l || !dimM || !dimM.w || !dimM.l) return { ...d, dimM };
               // keep every area at its set real size: re-derive each %-box under the new property size
-              const sections = (d.sections || []).map((s) => { const real = realOf(s.w, s.h, old); if (!real) return s; const bx = boxFromReal(real, dimM); return { ...s, x: s.x, y: s.y, ...bx }; });
+              const sections = (d.sections || []).map((s) => {
+                // the hidden "trees around the property" area always covers the whole property; just hold each tree at its real size
+                if (s.loose) return { ...s, x: 0, y: 0, w: 100, h: 100, plants: (s.plants || []).map((p) => p.shape === "hedge" ? p : { ...p, dia: clamp((p.dia ?? 12) * old.w / dimM.w, 2, 80) }) };
+                const real = realOf(s.w, s.h, old); if (!real) return s; const bx = boxFromReal(real, dimM); return { ...s, x: s.x, y: s.y, ...bx }; });
               return { ...d, dimM, sections };
             })} />
             <p style={{ fontSize: 11.5, color: C.muted, margin: "0 0 10px", lineHeight: 1.5 }}>Set the property size, then size each area with its size controls — areas draw to scale and carry their size inside. Changing the property size keeps every area, bed and plant at its set real size (they won't rescale) — just drag them back into place on the new photo.</p>
@@ -1273,7 +1319,24 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
       </div>
 
 
-      {editMode && data.sections.length > 0 && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s).text : "";
+      {editMode && selTree && (() => { const t = selTree; const m = data.dimM?.w ? Math.round((t.dia ?? 12) / 100 * data.dimM.w * 10) / 10 : null;
+        return (
+        <div style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <TreeDeciduous size={15} color={C.soil} />
+            <strong style={{ fontSize: 13.5, color: C.fernDk, flex: "1 1 auto" }}>{t.plant}</strong>
+            <button onClick={() => { setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }} style={btnOutline(C.fern)}>Open details</button>
+            <ConfirmButton onConfirm={() => removeTree(t.id)} style={btnOutline(C.beet)} armedLabel="Delete tree?"><Trash2 size={14} /></ConfirmButton>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: C.muted }}>
+            <span>Canopy {m != null ? `${m} m` : `${Math.round(t.dia ?? 12)}%`}</span>
+            {m != null
+              ? <input type="range" min={1} max={15} step={0.5} value={Math.min(15, Math.max(1, m))} onChange={(e) => patchTree(t.id, { dia: clamp(Number(e.target.value) / data.dimM.w * 100, 2, 80) })} style={{ flex: "1 1 120px", accentColor: C.fern }} />
+              : <input type="range" min={2} max={40} value={t.dia ?? 12} onChange={(e) => patchTree(t.id, { dia: Number(e.target.value) })} style={{ flex: "1 1 120px", accentColor: C.fern }} />}
+          </div>
+        </div>); })()}
+
+      {editMode && !selTree && data.sections.some((s) => !s.loose) && (() => { const s = data.sections.find((x) => x.id === editSel); const note = s ? sectionCountLabel(s).text : "";
         return (
         <div style={{ ...card, padding: 12, marginBottom: 10 }}>
           <strong style={{ fontSize: 13.5, color: C.fernDk }}>Area size &amp; angle</strong>
@@ -1313,12 +1376,12 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
               <p style={{ fontSize: 13.5, marginTop: 10, marginBottom: 0, lineHeight: 1.5 }}>This is your whole property. Tap <strong>Edit layout</strong> to add a satellite screenshot and drop in your garden, orchard, greenhouse and berry areas — then tap any one to go inside.</p>
             </div>
           </div>)}>
-        {data.sections.map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
+        {data.sections.filter((s) => !s.loose).map((s) => { const k = SECTION_KINDS[s.kind]; const Icon = k.icon;
           const count = sectionCountLabel(s).text;
           const dim = dimLabel(realOf(s.w, s.h, data.dimM));
           return (
             <div key={s.id} onPointerDown={editMode ? (e) => drag.onPointerDown(e, s, "move") : undefined}
-              onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(s.id); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
+              onClick={editMode ? (e) => { e.stopPropagation(); if (drag.moved()) return; setEditSel(s.id); setTreeSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: s.id, bedId: null }); }}
               style={{ position: "absolute", left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}%`, height: `${s.h}%`, transform: s.rot ? `rotate(${s.rot}deg)` : undefined, cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", background: hexA(k.color, .42), border: `${editMode ? 2.5 : 2}px ${editMode ? "dashed" : "solid"} ${k.color}`, borderRadius: 9, padding: 6, color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: editMode && editSel === s.id ? "0 0 0 3px #fff, 0 0 0 5px " + k.color : undefined }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>
                 <Icon size={13} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
@@ -1328,8 +1391,17 @@ function Overview({ data, setData, setNav, viewDate, setViewDate, display }) {
               </div>
             </div>
           ); })}
+        {looseTrees.map((t) => { const isBush = t.icon === "bush" || t.icon === "cane"; const dia = t.dia ?? (isBush ? 2.5 : 4); const on = editMode && treeSel === t.id;
+          const canopy = lib.color(t.plant, null) || "#557249"; const ring = "rgba(0,0,0,.35)";
+          return (
+            <div key={t.id} onPointerDown={editMode ? (e) => dragTrees.onPointerDown(e, t, "move") : undefined}
+              onClick={editMode ? (e) => { e.stopPropagation(); if (dragTrees.moved()) return; setTreeSel(t.id); setEditSel(null); } : (e) => { e.stopPropagation(); setNav({ level: "section", sectionId: loose.id, bedId: null }); setSel({ kind: "marker", sectionId: loose.id, id: t.id }); }}
+              style={{ position: "absolute", left: `${t.x}%`, top: `${t.y}%`, width: `${dia}%`, minWidth: 18, transform: "translate(-50%,-50%)", cursor: editMode ? "move" : "pointer", touchAction: editMode ? "none" : "auto", zIndex: 3 }}>
+              <div style={{ width: "100%", aspectRatio: 1, borderRadius: "50%", background: `radial-gradient(circle at 38% 35%, ${hexA("#FFFFFF", .28)}, ${canopy} 62%)`, border: `2px solid ${on ? "#fff" : ring}`, boxShadow: on ? `0 0 0 2px ${ring}` : "0 1px 3px rgba(0,0,0,.3)" }} />
+              <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 9.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{t.plant}</div>
+            </div>); })}
       </MapShell>
-      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · drag the ⌟ corner to resize · tap an area to set its exact size & angle above. Tap “Done editing” when finished." : "Tap a section to go inside it. Tap “Edit layout” to move or add areas."}</p>
+      <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? "Drag to move · tap an area or tree to set its size above. Tap “Done editing” when finished." : "Tap a section to go inside it, or tap a tree for its details. Tap “Edit layout” to move or add areas and trees."}</p>
     </div>
   );
 }
@@ -1627,7 +1699,7 @@ function SectionView({ data, setData, section, setNav, sel, setSel, viewDate, se
                   <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#fff", background: hexA(C.fernDk, .8), borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>{p.plant}</div>
                 </div>); })}
           </MapShell>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · drag the ⌟ corner to resize · tap a bed to set its size & grid above. Tap “Done” to finish." : "Drag to move · drag the ⌟ corner of a hedge to resize · tap one to set its shape & size above. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>{editMode ? (usesBeds ? "Drag beds to move · tap a bed to set its size & grid above. Tap “Done” to finish." : "Drag to move · tap one to set its shape & size above. Tap “Done” when finished.") : (usesBeds ? "Tap a bed to open its grid. Tap “Edit layout” to move or resize." : "Tap a plant for its details. Tap “Edit layout” to move things around.")}</p>
         </div>
 
         {selPlant && <DetailPanel item={selPlant} kind={section.kind === "berry" ? "bush" : "tree"} marker secReal={sectionReal} shade={shadeDir} data={data} patch={(p) => patchItem(selPlant.id, p)} remove={() => removePlant(selPlant.id)} close={() => setSel(null)} display={display} />}
